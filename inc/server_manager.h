@@ -1,15 +1,41 @@
 /**
 * @file server_manager.h
- * @brief Header file for server_manager.c.
- * @details Header file for server_manager.c.
- * 
- */
+* @brief Server management thread functions.
+* 
+* This file contains declarations for the server manager, which is responsible
+* for listening for incoming connections and spawning the necessary 
+* communication threads.
+*/
 #ifndef SERVER_MANAGER_H
 #define SERVER_MANAGER_H
 
 #include <stdbool.h>
+#include "app_thread.h"
 #include "comm_threads.h"
 
+/**
+ * @brief Main server thread function.
+ * 
+ * This function is responsible for:
+ * - Setting up a listening socket
+ * - Accepting incoming client connections
+ * - Creating send and receive threads for communication
+ * - Handling disconnections and reconnections
+ * - Cleaning up resources on exit
+ * 
+ * @param arg Thread arguments (AppThreadArgs_T*)
+ * @return void* NULL
+ */
 void* serverListenerThread(void* arg);
+
+/**
+ * @brief Template thread arguments for server send thread
+ */
+extern AppThreadArgs_T server_send_thread_args;
+
+/**
+ * @brief Template thread arguments for server receive thread
+ */
+extern AppThreadArgs_T server_receive_thread_args;
 
 #endif // SERVER_MANAGER_H
