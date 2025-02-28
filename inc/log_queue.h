@@ -10,7 +10,7 @@
 #include "logger.h"
 
 
-#define LOG_QUEUE_SIZE 20000 // Size of the log queue
+#define LOG_QUEUE_SIZE 0x8000  // Size of the log queue
 
 /**
  * @brief Structure representing a log queue.

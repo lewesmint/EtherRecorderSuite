@@ -5,6 +5,7 @@
 #include "logger.h"
 
 #define MAX_THREADS 5
+#define MESSAGE_QUEUE_SIZE 1024  // Power of 2 for performance
 
 static ThreadQueue_T thread_queues[MAX_THREADS];
 
@@ -13,22 +14,21 @@ bool message_queue_init(MessageQueue_T* queue, uint32_t max_size) {
         return false;
     }
     
-    queue->head = NULL;
-    queue->tail = NULL;
-    queue->size = 0;
-    queue->max_size = max_size;
+    // Initialize head and tail indices
+    queue->head = 0;
+    queue->tail = 0;
     
-    InitializeCriticalSection(&queue->lock);
+    // Set max_size (cannot exceed MESSAGE_QUEUE_SIZE)
+    queue->max_size = (max_size > 0 && max_size < MESSAGE_QUEUE_SIZE) ? max_size : MESSAGE_QUEUE_SIZE;
     
-    // Create events for synchronization
-    queue->not_empty = CreateEvent(NULL, TRUE, FALSE, NULL);
-    queue->not_full = CreateEvent(NULL, TRUE, TRUE, NULL);
+    // Create events for optional blocking behavior
+    queue->not_empty_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    queue->not_full_event = CreateEvent(NULL, TRUE, TRUE, NULL);
     
-    if (!queue->not_empty || !queue->not_full) {
+    if (!queue->not_empty_event || !queue->not_full_event) {
         logger_log(LOG_ERROR, "Failed to create queue synchronization events");
-        DeleteCriticalSection(&queue->lock);
-        if (queue->not_empty) CloseHandle(queue->not_empty);
-        if (queue->not_full) CloseHandle(queue->not_full);
+        if (queue->not_empty_event) CloseHandle(queue->not_empty_event);
+        if (queue->not_full_event) CloseHandle(queue->not_full_event);
         return false;
     }
     
@@ -40,62 +40,59 @@ bool message_queue_push(MessageQueue_T* queue, const Message_T* message, DWORD t
         return false;
     }
     
-    // Wait for space in the queue if it's limited
-    if (queue->max_size > 0) {
-        EnterCriticalSection(&queue->lock);
-        while (queue->size >= queue->max_size) {
-            LeaveCriticalSection(&queue->lock);
-            
-            DWORD wait_result = WaitForSingleObject(queue->not_full, timeout_ms);
-            if (wait_result != WAIT_OBJECT_0) {
-                logger_log(LOG_WARN, "Timeout or error waiting for space in message queue");
+    DWORD start_time = GetTickCount();
+    
+    while (true) {
+        // Atomically read current indices
+        long head = InterlockedCompareExchange(&queue->head, 0, 0);
+        long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
+        long next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
+        
+        // Calculate current size
+        long size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
+        
+        // Check if queue is full
+        if (next_head == tail || (queue->max_size > 0 && size >= queue->max_size)) {
+            // If timeout is 0, return immediately
+            if (timeout_ms == 0) {
                 return false;
             }
             
-            EnterCriticalSection(&queue->lock);
-            // Check again after getting the lock
-            if (queue->size < queue->max_size) {
-                break;
+            // Check if we've exceeded our timeout
+            DWORD elapsed = GetTickCount() - start_time;
+            if (elapsed >= timeout_ms) {
+                return false;
             }
+            
+            // Wait for space (with remaining timeout)
+            DWORD remaining = timeout_ms - elapsed;
+            DWORD wait_result = WaitForSingleObject(queue->not_full_event, remaining);
+            if (wait_result != WAIT_OBJECT_0) {
+                return false;
+            }
+            
+            // Try again
+            continue;
         }
-        LeaveCriticalSection(&queue->lock);
+        
+        // Try to reserve the slot by updating head
+        if (InterlockedCompareExchange(&queue->head, next_head, head) == head) {
+            // Successfully reserved, copy message data
+            memcpy(&queue->entries[head], message, sizeof(Message_T));
+            
+            // Signal not empty
+            SetEvent(queue->not_empty_event);
+            
+            // Check if queue is now full
+            if (next_head == tail || (queue->max_size > 0 && size + 1 >= queue->max_size)) {
+                ResetEvent(queue->not_full_event);
+            }
+            
+            return true;
+        }
+        
+        // Another thread modified head, retry
     }
-    
-    // Create a new message
-    Message_T* new_message = (Message_T*)malloc(sizeof(Message_T));
-    if (!new_message) {
-        logger_log(LOG_ERROR, "Failed to allocate memory for message");
-        return false;
-    }
-    
-    // Copy the message data
-    memcpy(new_message, message, sizeof(Message_T));
-    new_message->next = NULL;
-    
-    // Add to the queue with proper locking
-    EnterCriticalSection(&queue->lock);
-    
-    if (queue->tail) {
-        queue->tail->next = new_message;
-        queue->tail = new_message;
-    } else {
-        // Empty queue
-        queue->head = new_message;
-        queue->tail = new_message;
-    }
-    
-    queue->size++;
-    
-    // Signal that the queue is not empty
-    SetEvent(queue->not_empty);
-    
-    // If the queue is full now, reset the not_full event
-    if (queue->max_size > 0 && queue->size >= queue->max_size) {
-        ResetEvent(queue->not_full);
-    }
-    
-    LeaveCriticalSection(&queue->lock);
-    return true;
 }
 
 bool message_queue_pop(MessageQueue_T* queue, Message_T* message, DWORD timeout_ms) {
@@ -103,51 +100,59 @@ bool message_queue_pop(MessageQueue_T* queue, Message_T* message, DWORD timeout_
         return false;
     }
     
-    // Wait for a message in the queue
-    EnterCriticalSection(&queue->lock);
-    while (queue->head == NULL) {
-        // Reset the not_empty event since we're about to wait on it
-        ResetEvent(queue->not_empty);
+    DWORD start_time = GetTickCount();
+    
+    while (true) {
+        // Atomically read current indices
+        long head = InterlockedCompareExchange(&queue->head, 0, 0);
+        long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
         
-        LeaveCriticalSection(&queue->lock);
-        
-        DWORD wait_result = WaitForSingleObject(queue->not_empty, timeout_ms);
-        if (wait_result != WAIT_OBJECT_0) {
-            logger_log(LOG_WARN, "Timeout or error waiting for message in queue");
-            return false;
+        // Check if queue is empty
+        if (head == tail) {
+            // If timeout is 0, return immediately
+            if (timeout_ms == 0) {
+                return false;
+            }
+            
+            // Check if we've exceeded our timeout
+            DWORD elapsed = GetTickCount() - start_time;
+            if (elapsed >= timeout_ms) {
+                return false;
+            }
+            
+            // Wait for a message (with remaining timeout)
+            DWORD remaining = timeout_ms - elapsed;
+            DWORD wait_result = WaitForSingleObject(queue->not_empty_event, remaining);
+            if (wait_result != WAIT_OBJECT_0) {
+                return false;
+            }
+            
+            // Try again
+            continue;
         }
         
-        EnterCriticalSection(&queue->lock);
-        // Check again after getting the lock
-        if (queue->head != NULL) {
-            break;
+        // Copy message first, in case another thread updates tail
+        Message_T copied_message = queue->entries[tail];
+        
+        // Try to atomically update tail
+        long next_tail = (tail + 1) % MESSAGE_QUEUE_SIZE;
+        if (InterlockedCompareExchange(&queue->tail, next_tail, tail) == tail) {
+            // Successfully updated tail, provide the message
+            memcpy(message, &copied_message, sizeof(Message_T));
+            
+            // Signal not full
+            SetEvent(queue->not_full_event);
+            
+            // Check if queue is now empty
+            if (next_tail == head) {
+                ResetEvent(queue->not_empty_event);
+            }
+            
+            return true;
         }
+        
+        // Another thread modified tail, retry
     }
-    
-    // Remove the message from the queue
-    Message_T* head_message = queue->head;
-    queue->head = head_message->next;
-    
-    if (queue->head == NULL) {
-        // Queue is now empty
-        queue->tail = NULL;
-        ResetEvent(queue->not_empty);
-    }
-    
-    queue->size--;
-    
-    // Signal that the queue is not full
-    if (queue->max_size > 0 && queue->size < queue->max_size) {
-        SetEvent(queue->not_full);
-    }
-    
-    LeaveCriticalSection(&queue->lock);
-    
-    // Copy the message data and free the queue node
-    memcpy(message, head_message, sizeof(Message_T));
-    free(head_message);
-    
-    return true;
 }
 
 bool message_queue_is_empty(MessageQueue_T* queue) {
@@ -155,23 +160,32 @@ bool message_queue_is_empty(MessageQueue_T* queue) {
         return true;
     }
     
-    EnterCriticalSection(&queue->lock);
-    bool is_empty = (queue->head == NULL);
-    LeaveCriticalSection(&queue->lock);
+    long head = InterlockedCompareExchange(&queue->head, 0, 0);
+    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
     
-    return is_empty;
+    return (head == tail);
 }
 
 bool message_queue_is_full(MessageQueue_T* queue) {
-    if (!queue || queue->max_size == 0) {
+    if (!queue) {
         return false;
     }
     
-    EnterCriticalSection(&queue->lock);
-    bool is_full = (queue->size >= queue->max_size);
-    LeaveCriticalSection(&queue->lock);
+    long head = InterlockedCompareExchange(&queue->head, 0, 0);
+    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
+    long next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
     
-    return is_full;
+    // Check if physically full or at max_size limit
+    if (next_head == tail) {
+        return true;
+    }
+    
+    if (queue->max_size > 0) {
+        long size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
+        return (size >= queue->max_size);
+    }
+    
+    return false;
 }
 
 uint32_t message_queue_get_size(MessageQueue_T* queue) {
@@ -179,11 +193,10 @@ uint32_t message_queue_get_size(MessageQueue_T* queue) {
         return 0;
     }
     
-    EnterCriticalSection(&queue->lock);
-    uint32_t size = queue->size;
-    LeaveCriticalSection(&queue->lock);
+    long head = InterlockedCompareExchange(&queue->head, 0, 0);
+    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
     
-    return size;
+    return (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
 }
 
 void message_queue_clear(MessageQueue_T* queue) {
@@ -191,24 +204,13 @@ void message_queue_clear(MessageQueue_T* queue) {
         return;
     }
     
-    EnterCriticalSection(&queue->lock);
-    
-    Message_T* current = queue->head;
-    while (current) {
-        Message_T* next = current->next;
-        free(current);
-        current = next;
-    }
-    
-    queue->head = NULL;
-    queue->tail = NULL;
-    queue->size = 0;
+    // In lock-free design, we just reset head and tail
+    InterlockedExchange(&queue->head, 0);
+    InterlockedExchange(&queue->tail, 0);
     
     // Reset synchronization events
-    ResetEvent(queue->not_empty);
-    SetEvent(queue->not_full);
-    
-    LeaveCriticalSection(&queue->lock);
+    ResetEvent(queue->not_empty_event);
+    SetEvent(queue->not_full_event);
 }
 
 void message_queue_destroy(MessageQueue_T* queue) {
@@ -216,13 +218,9 @@ void message_queue_destroy(MessageQueue_T* queue) {
         return;
     }
     
-    // Clear the queue first
-    message_queue_clear(queue);
-    
     // Clean up synchronization objects
-    CloseHandle(queue->not_empty);
-    CloseHandle(queue->not_full);
-    DeleteCriticalSection(&queue->lock);
+    CloseHandle(queue->not_empty_event);
+    CloseHandle(queue->not_full_event);
 }
 
 ThreadQueue_T* register_thread(HANDLE thread_handle) {

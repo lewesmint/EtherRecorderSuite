@@ -23,8 +23,8 @@ THREAD_LOCAL static const char *thread_label = NULL;
 
 extern AppThread_T server_send_thread;
 extern AppThread_T server_receive_thread;
-// extern AppThread_T client_send_thread;
-// extern AppThread_T client_receive_thread;
+extern AppThread_T client_send_thread;
+extern AppThread_T client_receive_thread;
 
 static CONDITION_VARIABLE logger_thread_condition;
 static CRITICAL_SECTION logger_thread_mutex_in_app_thread;
@@ -254,10 +254,10 @@ AppThread_T logger_thread = {
 static AppThread_T* all_threads[] = {
     &client_thread,
     &server_thread,
-//    &server_receive_thread
-//    &server_send_thread,
-//    &client_receive_thread,
-//    &client_send_thread,
+    &server_receive_thread,
+    &server_send_thread,
+    &client_receive_thread,
+    &client_send_thread,
     &command_interface_thread,
     &logger_thread
 };
