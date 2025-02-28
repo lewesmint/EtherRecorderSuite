@@ -26,14 +26,4 @@
  */
 void* clientMainThread(void* arg);
 
-/**
- * @brief Template thread arguments for client send thread
- */
-extern AppThreadArgs_T client_send_thread_args;
-
-/**
- * @brief Template thread arguments for client receive thread
- */
-extern AppThreadArgs_T client_receive_thread_args;
-
 #endif // CLIENT_MANAGER_H

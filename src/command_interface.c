@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <limits.h>  // For INT_MAX
+#include <stdlib.h>  // For malloc, free
 
 #include "common_socket.h"
 #include "logger.h"
@@ -20,9 +21,9 @@ void init_from_config() {
     gs_listening_port = get_config_int("command_interface", "listening_port", 4100);
 }
 
-#define BUFFER_SIZE       (size_t)(4096)
-#define MAX_MESSAGE_SIZE  2016        // Maximum total packet size (16 bytes overhead + 2000 body)
-#define TIMEOUT_SEC       5           // Timeout for select()
+#define COMMAND_BUFFER_SIZE (size_t)(4096)
+#define MAX_MESSAGE_SIZE    2016           // Maximum total packet size (16 bytes overhead + 2000 body)
+#define TIMEOUT_SEC         5              // Timeout for select()
 
 /* Process result enumeration to differentiate incomplete data from errors */
 typedef enum {
@@ -52,7 +53,7 @@ static uint32_t ack_index = 1;      // ACK counter
 
 /* Buffered stream for receiving data */
 typedef struct {
-    uint8_t buffer[BUFFER_SIZE];
+    uint8_t buffer[COMMAND_BUFFER_SIZE];
     size_t buffer_length;
 } StreamBuffer;
 
@@ -67,7 +68,7 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
 ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* length);
 ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* length);
 ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length);
-void command_interface_loop(SOCKET client_sock, struct sockaddr_in* client_addr);
+void command_interface_loop(SOCKET client_sock);
 
 /* State handler array in order of the state machine */
 static StateHandler states[] = {
@@ -103,7 +104,7 @@ int buffered_recv(SOCKET sock) {
     }
 
     // Calculate available space in the buffer
-    size_t available_size = BUFFER_SIZE - stream.buffer_length;
+    size_t available_size = COMMAND_BUFFER_SIZE - stream.buffer_length;
 
     // Ensure the size is within `int` range for `recv()`
     int bytes_to_read = (available_size > INT_MAX) ? INT_MAX : (int)available_size;
@@ -140,6 +141,7 @@ void consume_buffer(size_t size) {
  * @brief State: Wait for the start marker.
  */
 ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* length) {
+    (void)sock;  // Unused parameter
     logger_log(LOG_DEBUG, "top of process_wait_for_start length = %d", *length);
     if (*length < 4) {
         return PROCESS_NEED_MORE_DATA;
@@ -174,6 +176,7 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
  * @brief State: Wait for the message length.
  */
 ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* length) {
+    (void)sock;  // Unused parameter
     logger_log(LOG_DEBUG, "top of process_wait_for_length length: %d", *length);
     if (*length < 4) {
         return PROCESS_NEED_MORE_DATA;
@@ -213,6 +216,7 @@ ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* leng
  *   - End Marker: 4 bytes
  */
 ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* length) {
+    (void)sock;  // Unused parameter
     logger_log(LOG_DEBUG, "top of process_wait_for_message length = %d", *length);
     logger_log(LOG_DEBUG, "top of process_wait_for_message message_length = %d", message_length);
     // Since we already consumed 8 bytes (start marker and length), check for remaining packet length.
@@ -233,7 +237,7 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
     logger_log(LOG_DEBUG, "extracted to buffer");
     // Extract message index (first 4 bytes of the remaining buffer)
     memcpy(&received_index, buffer, 4);
-    uint32_t be_received_index = received_index;
+    // uint32_t be_received_index = received_index;
     received_index = ntohl(received_index); // Convert from big-endian
 
     // Calculate message body length
@@ -255,7 +259,7 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
     }
 
     // Allocate buffer for message body (safely)
-    char* message_body = (char*)malloc(message_body_length + 1);
+    char* message_body = malloc(message_body_length + 1);
     if (!message_body) {
         logger_log(LOG_ERROR, "Memory allocation failed for message body.");
         consume_buffer(message_length - 8);
@@ -291,6 +295,7 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
  *   - End Marker: 4 bytes
  */
 ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
+    (void) buffer;
     logger_log(LOG_DEBUG, "top of process_send_ack length = %d", *length);
     char ack_body[32];
     int ack_body_len = snprintf(ack_body, sizeof(ack_body), "ACK %u", received_index);
@@ -299,7 +304,7 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
         return PROCESS_FAIL;
     }
 
-    uint32_t ack_packet_length = 16 + ack_body_len;
+    int32_t ack_packet_length = 16 + ack_body_len;
     uint8_t ack_buffer[256];
     if (ack_packet_length > sizeof(ack_buffer)) {
         logger_log(LOG_ERROR, "ACK message too long.");
@@ -351,8 +356,8 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
 
 /**
  * @brief Main command interface loop handling the state machine.
- */
-void command_interface_loop(SOCKET client_sock, struct sockaddr_in* client_addr) {
+ */ 
+void command_interface_loop(SOCKET client_sock) {
 
     while (!shutdown_signalled()) {
         int bytes = buffered_recv(client_sock);
@@ -400,14 +405,15 @@ void command_interface_loop(SOCKET client_sock, struct sockaddr_in* client_addr)
 }
 
 /**
- * Main client thread entry point.
+ * Command Interface thread Function
  */
-void* command_interface_thread(void* arg) {
-    // AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+void* command_interface_thread_function(void* arg) {
+    (void) arg;
+    // AppThread_T* thread_info = (AppThread_T*)arg;
     init_from_config();
 
-    bool is_tcp = true;
-    bool is_server = true;
+    // bool is_tcp = true;
+    // bool is_server = true;
     SOCKET sock = INVALID_SOCKET;
 
     struct sockaddr_in addr;
@@ -440,7 +446,7 @@ void* command_interface_thread(void* arg) {
         logger_log(LOG_INFO, "Client connected.");
 
         // Handle client communication
-        command_interface_loop(client_sock, &client_addr);
+        command_interface_loop(sock);
 
         // Handle client disconnection
         close_socket(&client_sock);

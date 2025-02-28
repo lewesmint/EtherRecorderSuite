@@ -1,9 +1,10 @@
 #include "comm_threads.h"
-#include "logger.h"
-#include "platform_utils.h"
 #include <string.h>
 
-// External declarations
+#include "logger.h"
+#include "platform_utils.h"
+
+
 extern bool shutdown_signalled(void);
 
 /**
@@ -31,26 +32,10 @@ static bool is_connection_closed(volatile LONG* flag) {
 }
 
 /**
- * @brief Handle a socket error or disconnect
- * 
- * @param sock Socket that encountered an error
- * @param error_msg Error message to log
- * @param flag Connection closed flag to set
- */
-static void handle_socket_error(SOCKET* sock, const char* error_msg, volatile LONG* flag) {
-    if (!is_connection_closed(flag)) {
-        char error_buffer[SOCKET_ERROR_BUFFER_SIZE];
-        get_socket_error_message(error_buffer, sizeof(error_buffer));
-        logger_log(LOG_ERROR, "%s: %s", error_msg, error_buffer);
-        mark_connection_closed(flag);
-    }
-}
-
-/**
  * @brief Thread function for receiving data from a socket
  */
 void* receive_thread(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     
     CommArgs_T* comm_args = (CommArgs_T*)thread_info->data;
@@ -67,7 +52,7 @@ void* receive_thread(void* arg) {
     logger_log(LOG_INFO, "Started receive thread for %s connection", is_tcp ? "TCP" : "UDP");
     
     // Buffer for receiving data
-    char buffer[BUFFER_SIZE];
+    char buffer[COMMS_BUFFER_SIZE];
     
     // Continue receiving until shutdown or connection closed
     while (!shutdown_signalled() && !is_connection_closed(comm_args->connection_closed)) {
@@ -91,9 +76,30 @@ void* receive_thread(void* arg) {
             // Successfully received data
             logger_log(LOG_DEBUG, "Received %d bytes of data", bytes_received);
             
-            // Process the received data here
-            // ...
+            // Create a message for the received data
+            Message_T message;
+            memset(&message, 0, sizeof(Message_T));
             
+            // Populate message header
+            message.header.type = MSG_TYPE_RELAY;
+            message.header.content_size = bytes_received;
+            message.header.id = platform_random(); // Unique message ID
+            message.header.flags = is_tcp ? 1 : 0; // Flag to indicate TCP/UDP
+            
+            // Ensure we don't overflow the message content
+            size_t copy_size = (bytes_received > sizeof(message.content)) 
+                ? sizeof(message.content) 
+                : bytes_received;
+            
+            // Copy received data into message content
+            memcpy(message.content, buffer, copy_size);
+            
+            // If relay is enabled and outgoing queue exists, push the message
+            if (comm_args->outgoing_queue) {
+                if (!message_queue_push(comm_args->outgoing_queue, &message, INFINITE)) {
+                    logger_log(LOG_WARN, "Failed to push received message to queue");
+                }
+            }
         } else if (bytes_received == 0) {
             // Connection closed by peer
             logger_log(LOG_INFO, "Connection closed by peer");
@@ -101,11 +107,14 @@ void* receive_thread(void* arg) {
             break;
         } else {
             // Socket error
-            handle_socket_error(comm_args->sock, "Error receiving data", comm_args->connection_closed);
+            char error_buffer[SOCKET_ERROR_BUFFER_SIZE];
+            get_socket_error_message(error_buffer, sizeof(error_buffer));
+            logger_log(LOG_ERROR, "Error receiving data: %s", error_buffer);
+            mark_connection_closed(comm_args->connection_closed);
             break;
         }
         
-        // Short sleep to prevent CPU spinning in case of rapid messages
+        // Short sleep to prevent CPU spinning
         sleep_ms(1);
     }
     
@@ -117,7 +126,7 @@ void* receive_thread(void* arg) {
  * @brief Thread function for sending data to a socket
  */
 void* send_thread(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     
     CommArgs_T* comm_args = (CommArgs_T*)thread_info->data;
@@ -130,12 +139,8 @@ void* send_thread(void* arg) {
     CommsThreadArgs_T* comms_info = (CommsThreadArgs_T*)comm_args->thread_info;
     bool is_tcp = comms_info ? comms_info->is_tcp : true;
     socklen_t addr_len = sizeof(struct sockaddr_in);
-    int send_interval = (comms_info && comms_info->send_interval_ms > 0) ? 
-                        comms_info->send_interval_ms : 1000;
-    bool send_test_data = comms_info ? comms_info->send_test_data : false;
     
-    logger_log(LOG_INFO, "Started send thread for %s connection, interval: %dms, test data: %s", 
-              is_tcp ? "TCP" : "UDP", send_interval, send_test_data ? "enabled" : "disabled");
+    logger_log(LOG_INFO, "Started send thread for %s connection", is_tcp ? "TCP" : "UDP");
     
     // Continue sending until shutdown or connection closed
     while (!shutdown_signalled() && !is_connection_closed(comm_args->connection_closed)) {
@@ -146,35 +151,62 @@ void* send_thread(void* arg) {
             break;
         }
         
-        // Only send if test data is enabled
-        if (send_test_data) {
-            // Create test data packet
-            DummyPayload payload;
-            int payload_size = generateRandomData(&payload);
-            
-            // Send data with proper error handling
+        // Try to get a message from the incoming queue
+        Message_T message;
+        if (comm_args->incoming_queue && 
+            message_queue_pop(comm_args->incoming_queue, &message, 100)) {
+            // Send the message over the socket
             int bytes_sent;
             if (is_tcp) {
-                bytes_sent = send(sock, (char*)&payload, payload_size, 0);
+                bytes_sent = send(sock, message.content, message.header.content_size, 0);
             } else {
-                bytes_sent = sendto(sock, (char*)&payload, payload_size, 0,
+                bytes_sent = sendto(sock, message.content, message.header.content_size, 0,
                                   (struct sockaddr*)&comm_args->client_addr, addr_len);
             }
             
             if (bytes_sent > 0) {
                 // Successfully sent data
-                logger_log(LOG_DEBUG, "Sent %d bytes of data", bytes_sent);
+                logger_log(LOG_DEBUG, "Sent %d bytes of relayed data", bytes_sent);
             } else {
                 // Socket error
-                handle_socket_error(comm_args->sock, "Error sending data", comm_args->connection_closed);
+                char error_buffer[SOCKET_ERROR_BUFFER_SIZE];
+                get_socket_error_message(error_buffer, sizeof(error_buffer));
+                logger_log(LOG_ERROR, "Error sending relayed data: %s", error_buffer);
+                mark_connection_closed(comm_args->connection_closed);
                 break;
             }
         }
         
-        // Sleep for the configured interval
-        sleep_ms(send_interval);
+        // Small sleep to prevent tight spinning
+        sleep_ms(10);
     }
     
     logger_log(LOG_INFO, "Exiting send thread");
     return NULL;
+}
+
+/**
+ * @brief Initialize relay between communication endpoints
+ */
+bool init_relay(
+    CommArgs_T* client_args,
+    CommArgs_T* server_args,
+    MessageQueue_T* client_to_server_queue,
+    MessageQueue_T* server_to_client_queue
+) {
+    if (!client_args || !server_args || 
+        !client_to_server_queue || !server_to_client_queue) {
+        logger_log(LOG_ERROR, "Invalid arguments for relay initialization");
+        return false;
+    }
+
+    // Set up queues for client
+    client_args->incoming_queue = server_to_client_queue;
+    client_args->outgoing_queue = client_to_server_queue;
+
+    // Set up queues for server
+    server_args->incoming_queue = client_to_server_queue;
+    server_args->outgoing_queue = server_to_client_queue;
+
+    return true;
 }

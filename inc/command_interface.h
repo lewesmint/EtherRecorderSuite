@@ -13,6 +13,6 @@ typedef struct command_interface_thread_args_T {
 } command_interface_thread_args_T;
 
 
-void* command_interface_thread(void* arg);
+void* command_interface_thread_function(void* arg);
 
 #endif // COMMAND_INTERFACE_H

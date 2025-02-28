@@ -6,7 +6,7 @@
 #include "message_queue.h"
 
 // Configuration constants with sensible defaults
-#define BUFFER_SIZE               8192
+#define COMMS_BUFFER_SIZE         8192
 #define SOCKET_ERROR_BUFFER_SIZE  256
 #define BLOCKING_TIMEOUT_SEC      10  // Blocking timeout in seconds
 
@@ -98,8 +98,7 @@ bool init_relay(
     CommArgs_T* client_args,
     CommArgs_T* server_args,
     MessageQueue_T* client_to_server_queue,
-    MessageQueue_T* server_to_client_queue,
-    CommsThreadArgs_T* relay_config
+    MessageQueue_T* server_to_client_queue
 );
 
 /**

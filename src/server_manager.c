@@ -24,7 +24,7 @@ extern bool shutdown_signalled(void);
 #define DEFAULT_LISTEN_BACKOFF_MAX_SECONDS 32
 
 // Thread arguments for the server's send and receive threads
-AppThreadArgs_T server_send_thread_args = {
+AppThread_T server_send_thread = {
     .suppressed = true,
     .label = "SERVER.SEND",
     .func = send_thread,
@@ -35,7 +35,7 @@ AppThreadArgs_T server_send_thread_args = {
     .exit_func = exit_stub
 };
 
-AppThreadArgs_T server_receive_thread_args = {
+AppThread_T server_receive_thread = {
     .suppressed = true,
     .label = "SERVER.RECEIVE",
     .func = receive_thread,
@@ -168,7 +168,7 @@ static SOCKET setup_server_socket(struct sockaddr_in* addr, int port) {
 }
 
 void* serverListenerThread(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     CommsThreadArgs_T* server_info = (CommsThreadArgs_T*)thread_info->data;
     set_thread_label(thread_info->label);
     
@@ -247,22 +247,22 @@ void* serverListenerThread(void* arg) {
         };
         
         // Create local copies of thread arguments
-        AppThreadArgs_T send_thread_args_local = server_send_thread_args;
-        AppThreadArgs_T receive_thread_args_local = server_receive_thread_args;
+        AppThread_T send_thread_local = server_send_thread;
+        AppThread_T receive_thread_local = server_receive_thread;
         
         // Set up thread data
-        send_thread_args_local.data = &comm_args;
-        receive_thread_args_local.data = &comm_args;
-        send_thread_args_local.suppressed = false;
-        receive_thread_args_local.suppressed = false;
+        send_thread_local.data = &comm_args;
+        receive_thread_local.data = &comm_args;
+        send_thread_local.suppressed = false;
+        receive_thread_local.suppressed = false;
         
         // Create the communication threads
-        create_app_thread(&send_thread_args_local);
-        create_app_thread(&receive_thread_args_local);
+        create_app_thread(&send_thread_local);
+        create_app_thread(&receive_thread_local);
         
         // Store thread handles for cleanup
-        HANDLE send_thread_handle = send_thread_args_local.thread_id;
-        HANDLE receive_thread_handle = receive_thread_args_local.thread_id;
+        HANDLE send_thread_handle = send_thread_local.thread_id;
+        HANDLE receive_thread_handle = receive_thread_local.thread_id;
         
         // Wait for the threads to complete or for a shutdown signal
         int retry_count = 0;

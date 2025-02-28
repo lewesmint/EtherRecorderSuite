@@ -1,0 +1,101 @@
+{
+    "version": 3,
+    "configurePresets": [
+      {
+        "name": "base",
+        "hidden": true,
+        "binaryDir": "${sourceDir}/build/${presetName}",
+        "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Debug"
+        }
+      },
+      {
+        "name": "windows",
+        "inherits": "base",
+        "condition": {
+          "type": "equals",
+          "lhs": "${hostSystemName}",
+          "rhs": "Windows"
+        },
+        "generator": "Visual Studio 17 2022",
+        "architecture": {
+          "value": "x64",
+          "strategy": "external"
+        }
+      },
+      {
+        "name": "linux",
+        "inherits": "base",
+        "condition": {
+          "type": "equals",
+          "lhs": "${hostSystemName}",
+          "rhs": "Linux"
+        },
+        "generator": "Unix Makefiles"
+      },
+      {
+        "name": "macos",
+        "inherits": "base",
+        "condition": {
+          "type": "equals",
+          "lhs": "${hostSystemName}",
+          "rhs": "Darwin"
+        },
+        "generator": "Unix Makefiles"
+      },
+      {
+        "name": "debug",
+        "inherits": "base",
+        "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Debug"
+        }
+      },
+      {
+        "name": "release",
+        "inherits": "base",
+        "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Release"
+        }
+      },
+      {
+        "name": "windows-debug",
+        "inherits": [ "windows", "debug" ]
+      },
+      {
+        "name": "windows-release",
+        "inherits": [ "windows", "release" ]
+      },
+      {
+        "name": "linux-debug",
+        "inherits": [ "linux", "debug" ]
+      },
+      {
+        "name": "linux-release",
+        "inherits": [ "linux", "release" ]
+      },
+      {
+        "name": "macos-debug",
+        "inherits": [ "macos", "debug" ]
+      },
+      {
+        "name": "macos-release",
+        "inherits": [ "macos", "release" ]
+      }
+    ],
+    "buildPresets": [
+      {
+        "name": "default",
+        "configurePreset": "base"
+      }
+    ],
+    "testPresets": [
+      {
+        "name": "default",
+        "configurePreset": "base",
+        "output": {
+          "outputOnFailure": true
+        }
+      }
+    ]
+  }
+  

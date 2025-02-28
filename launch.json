@@ -1,0 +1,60 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug (Windows)",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/windows-debug/ClaudeEther.exe",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "stopAtEntry": false
+      },
+      {
+        "name": "Release (Windows)",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/windows-release/ClaudeEther.exe",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "stopAtEntry": false
+      },
+      {
+        "name": "Debug (macOS)",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/macos-debug/ClaudeEther",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "MIMode": "lldb"
+      },
+      {
+        "name": "Release (macOS)",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/macos-release/ClaudeEther",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "MIMode": "lldb"
+      },
+      {
+        "name": "Debug (Linux)",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/linux-debug/ClaudeEther",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "MIMode": "gdb"
+      },
+      {
+        "name": "Release (Linux)",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/linux-release/ClaudeEther",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "MIMode": "gdb"
+      }
+    ]
+  }
+  

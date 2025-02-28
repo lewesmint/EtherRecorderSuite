@@ -28,14 +28,4 @@
  */
 void* serverListenerThread(void* arg);
 
-/**
- * @brief Template thread arguments for server send thread
- */
-extern AppThreadArgs_T server_send_thread_args;
-
-/**
- * @brief Template thread arguments for server receive thread
- */
-extern AppThreadArgs_T server_receive_thread_args;
-
 #endif // SERVER_MANAGER_H

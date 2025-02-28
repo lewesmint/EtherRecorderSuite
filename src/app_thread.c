@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <windows.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "platform_utils.h"
 #include "platform_threads.h"
@@ -20,13 +21,14 @@ extern bool shutdown_signalled(void);
 
 THREAD_LOCAL static const char *thread_label = NULL;
 
-extern AppThreadArgs_T send_thread_args;
-extern AppThreadArgs_T receive_thread_args;
+extern AppThread_T server_send_thread;
+extern AppThread_T server_receive_thread;
+// extern AppThread_T client_send_thread;
+// extern AppThread_T client_receive_thread;
 
 static CONDITION_VARIABLE logger_thread_condition;
 static CRITICAL_SECTION logger_thread_mutex_in_app_thread;
 volatile bool logger_ready = false;
-
 
 typedef enum WaitResult {
     APP_WAIT_SUCCESS = 0,
@@ -34,9 +36,9 @@ typedef enum WaitResult {
     APP_WAIT_ERROR = -1
 } WaitResult;
 
-void* app_thread(AppThreadArgs_T* thread_args) {
+void* app_thread(AppThread_T* thread_args) {
     if (thread_args->init_func) {
-        if ((WaitResult)thread_args->init_func(thread_args) != APP_WAIT_SUCCESS) {
+        if ((WaitResult)(uintptr_t)thread_args->init_func(thread_args) != APP_WAIT_SUCCESS) {
             printf("[%s] Initialisation failed, exiting thread\n", thread_args->label);
             return NULL;
         }
@@ -48,7 +50,7 @@ void* app_thread(AppThreadArgs_T* thread_args) {
     return NULL;
 }
 
-void create_app_thread(AppThreadArgs_T *thread) {
+void create_app_thread(AppThread_T *thread) {
     if (thread->pre_create_func)
         thread->pre_create_func(thread);
     platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread, thread);
@@ -129,7 +131,7 @@ int wait_for_condition_with_timeout(void* condition, void* mutex, int timeout_ms
 }
 
 void* init_wait_for_logger(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     init_thread_timestamp_system();
 
@@ -147,12 +149,13 @@ void* init_wait_for_logger(void* arg) {
     LeaveCriticalSection(&logger_thread_mutex_in_app_thread);
     set_thread_log_file_from_config(thread_info->label);
     logger_log(LOG_INFO, "Thread %s initialised", thread_info->label);
+    logger_log(LOG_INFO, "Logger thread initialised");
 
     return (void*)APP_WAIT_SUCCESS;
 }
 
 void* logger_thread_function(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     logger_log(LOG_INFO, "Logger thread started");
 
@@ -196,8 +199,18 @@ static CommsThreadArgs_T client_thread_args = {
     .is_tcp = true
 };
 
+static CommsThreadArgs_T server_thread_args = {
+    .server_hostname = "0.0.0.0",
+    .send_test_data = false,
+    .data = &test_send_data,
+    .data_size = sizeof(test_send_data),
+    .send_interval_ms = 2000,
+    .port = 4100,
+    .is_tcp = true
+};
 
-AppThreadArgs_T client_thread = {
+
+AppThread_T client_thread = {
     .label = "CLIENT",
     .func = clientMainThread,
     .data = &client_thread_args,
@@ -207,9 +220,20 @@ AppThreadArgs_T client_thread = {
     .exit_func = exit_stub
 };
 
-AppThreadArgs_T commnand_interface_thread = {
+AppThread_T server_thread = {
+    .label = "SERVER",
+    .func = serverListenerThread,
+    .data = &server_thread_args,
+    .pre_create_func = pre_create_stub,
+    .post_create_func = post_create_stub,
+    .init_func = init_wait_for_logger,
+    .exit_func = exit_stub
+};
+
+
+AppThread_T command_interface_thread = {
     .label = "COMMAND_INTERFACE",
-    .func = command_interface_thread,
+    .func = command_interface_thread_function,
     .data = NULL,
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
@@ -217,7 +241,7 @@ AppThreadArgs_T commnand_interface_thread = {
     .exit_func = exit_stub
 };
 
-AppThreadArgs_T logger_thread = {
+AppThread_T logger_thread = {
     .label = "LOGGER",
     .func = logger_thread_function,
     .data = NULL,
@@ -227,17 +251,20 @@ AppThreadArgs_T logger_thread = {
     .exit_func = exit_stub
 };
 
-static AppThreadArgs_T* all_threads[] = {
+static AppThread_T* all_threads[] = {
     &client_thread,
-    &commnand_interface_thread,
-    &logger_thread,
-    &send_thread_args,
-    &receive_thread_args
+    &server_thread,
+//    &server_receive_thread
+//    &server_send_thread,
+//    &client_receive_thread,
+//    &client_send_thread,
+    &command_interface_thread,
+    &logger_thread
 };
 
 bool wait_for_all_threads_to_complete(int time_ms)
 {
-    uint32_t num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
+    // uint32_t num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
 
     HANDLE threadHandles[NUM_THREADS];
     memset(threadHandles, 0, sizeof(threadHandles));
@@ -282,7 +309,7 @@ bool wait_for_all_threads_to_complete(int time_ms)
 
 void wait_for_all_other_threads_to_complete(void)
 {
-    int num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
+    // int num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
 
     HANDLE threadHandles[NUM_THREADS];
     memset(threadHandles, 0, sizeof(threadHandles));

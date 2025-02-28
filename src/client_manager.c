@@ -89,7 +89,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
     return INVALID_SOCKET;
 }
 
-AppThreadArgs_T client_send_thread_args = {
+AppThread_T client_send_thread = {
     .suppressed = true,
     .label = "CLIENT.SEND",
     .func = send_thread,
@@ -100,7 +100,7 @@ AppThreadArgs_T client_send_thread_args = {
     .exit_func = exit_stub
 };
 
-AppThreadArgs_T client_receive_thread_args = {
+AppThread_T client_receive_thread = {
     .suppressed = true,
     .label = "CLIENT.RECEIVE",
     .func = receive_thread,
@@ -192,7 +192,7 @@ static bool wait_for_communication_threads(
 }
 
 void* clientMainThread(void* arg) {
-    AppThreadArgs_T* thread_info = (AppThreadArgs_T*)arg;
+    AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     CommsThreadArgs_T* client_info = (CommsThreadArgs_T*)thread_info->data;
 
@@ -248,21 +248,21 @@ void* clientMainThread(void* arg) {
         };
         
         // Create local copies of thread args
-        AppThreadArgs_T send_thread_args_local = client_send_thread_args;
-        AppThreadArgs_T receive_thread_args_local = client_receive_thread_args;
+        AppThread_T send_thread_local = client_send_thread;
+        AppThread_T receive_thread_local = client_receive_thread;
         
-        send_thread_args_local.data = &comm_args;
-        receive_thread_args_local.data = &comm_args;
-        send_thread_args_local.suppressed = false;
-        receive_thread_args_local.suppressed = false;
+        send_thread_local.data = &comm_args;
+        receive_thread_local.data = &comm_args;
+        send_thread_local.suppressed = false;
+        receive_thread_local.suppressed = false;
    
         // Create communication threads
-        create_app_thread(&send_thread_args_local);
-        create_app_thread(&receive_thread_args_local);
+        create_app_thread(&send_thread_local);
+        create_app_thread(&receive_thread_local);
 
         // Store thread handles for cleanup
-        HANDLE send_thread_handle = send_thread_args_local.thread_id;
-        HANDLE receive_thread_handle = receive_thread_args_local.thread_id;
+        HANDLE send_thread_handle = send_thread_local.thread_id;
+        HANDLE receive_thread_handle = receive_thread_local.thread_id;
 
         bool need_retry = false;
         

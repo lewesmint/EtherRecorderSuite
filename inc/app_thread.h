@@ -60,7 +60,7 @@ typedef void* (*ThreadFunc_T)(void* arg);
 /**
  * @brief Structure to hold thread arguments and functions.
  */
-typedef struct AppThreadArgs_T {
+typedef struct AppThread_T {
     const char* label;                   ///< Label for the thread (e.g., "CLIENT" or "SERVER")
     ThreadFunc_T func;                   ///< Actual function to execute
     HANDLE thread_id;                    ///< Thread ID
@@ -70,7 +70,7 @@ typedef struct AppThreadArgs_T {
     InitFunc_T init_func;                ///< Initialisation function
     ExitFunc_T exit_func;                ///< Exit function
     bool suppressed;                     ///< Suppress the thread
-} AppThreadArgs_T;
+} AppThread_T;
 
 /**
  * @brief Starts the threads based on the thread table.
@@ -99,7 +99,7 @@ void wait_for_all_other_threads_to_complete(void);
  * @brief Creates an application thread.
  * @param thread The thread arguments.
  */
-void create_app_thread(AppThreadArgs_T *thread);
+void create_app_thread(AppThread_T *thread);
 
 #ifdef __cplusplus
 }
