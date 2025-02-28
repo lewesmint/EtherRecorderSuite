@@ -4,6 +4,7 @@
 #include "common_socket.h"
 #include "app_thread.h"
 #include "message_queue.h"
+#include "thread_group.h"
 
 // Configuration constants with sensible defaults
 #define COMMS_BUFFER_SIZE         8192
@@ -120,5 +121,68 @@ Message_T create_message(const char* buffer, uint32_t length, MessageType msg_ty
  * @return true if transformation was successful, false otherwise
  */
 bool transform_message(Message_T* message, RelayMode mode);
+
+/**
+ * @brief Communication thread group for managing send/receive threads
+ */
+typedef struct CommsThreadGroup {
+    ThreadGroup base;              // Base thread group
+    SOCKET* socket;                // Socket pointer (owned by parent thread)
+    volatile LONG* connection_closed; // Connection closed flag (owned by parent thread)
+    MessageQueue_T* incoming_queue; // Queue for incoming messages
+    MessageQueue_T* outgoing_queue; // Queue for outgoing messages
+} CommsThreadGroup;
+
+/**
+ * @brief Initialize a communication thread group
+ * 
+ * @param group Pointer to the communication thread group
+ * @param name Group name
+ * @param socket Pointer to the socket
+ * @param connection_closed Pointer to the connection closed flag
+ * @return bool true on success, false on failure
+ */
+bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile LONG* connection_closed);
+
+/**
+ * @brief Create send and receive threads for a connection
+ * 
+ * @param group Pointer to the communication thread group
+ * @param client_addr Pointer to the client address structure
+ * @param thread_info Pointer to thread info structure
+ * @return bool true on success, false on failure
+ */
+bool comms_thread_group_create_threads(CommsThreadGroup* group, struct sockaddr_in* client_addr, void* thread_info);
+
+/**
+ * @brief Check if a communication connection is closed
+ * 
+ * @param group Pointer to the communication thread group
+ * @return bool true if the connection is closed, false otherwise
+ */
+bool comms_thread_group_is_closed(CommsThreadGroup* group);
+
+/**
+ * @brief Mark a communication connection as closed
+ * 
+ * @param group Pointer to the communication thread group
+ */
+void comms_thread_group_close(CommsThreadGroup* group);
+
+/**
+ * @brief Wait for all communication threads to complete
+ * 
+ * @param group Pointer to the communication thread group
+ * @param timeout_ms Maximum time to wait in milliseconds
+ * @return bool true if all threads completed, false on timeout or error
+ */
+bool comms_thread_group_wait(CommsThreadGroup* group, DWORD timeout_ms);
+
+/**
+ * @brief Clean up communication thread group resources
+ * 
+ * @param group Pointer to the communication thread group
+ */
+void comms_thread_group_cleanup(CommsThreadGroup* group);
 
 #endif // COMM_THREADS_H

@@ -1,0 +1,262 @@
+/**
+ * @file thread_group.c
+ * @brief Implementation of thread group management.
+ */
+#include "thread_group.h"
+#include <string.h>
+#include "logger.h"
+#include "app_thread.h"
+
+
+
+// External declarations for stub functions
+extern void* pre_create_stub(void* arg);
+extern void* post_create_stub(void* arg);
+extern void* init_stub(void* arg);
+extern void* exit_stub(void* arg);
+extern void* init_wait_for_logger(void* arg);
+extern bool shutdown_signalled(void);
+
+
+bool thread_group_init(ThreadGroup* group, const char* name) {
+    if (!group || !name) {
+        return false;
+    }
+    
+    strncpy(group->name, name, sizeof(group->name) - 1);
+    group->name[sizeof(group->name) - 1] = '\0';
+    
+    if (!thread_registry_init(&group->registry)) {
+        logger_log(LOG_ERROR, "Failed to initialize thread registry for group '%s'", name);
+        return false;
+    }
+    
+    logger_log(LOG_DEBUG, "Thread group '%s' initialized", name);
+    return true;
+}
+
+bool thread_group_add(ThreadGroup* group, AppThread_T* thread) {
+    if (!group || !thread) {
+        return false;
+    }
+    
+    // Create the thread
+    if (!thread->pre_create_func) thread->pre_create_func = pre_create_stub;
+    if (!thread->post_create_func) thread->post_create_func = post_create_stub;
+    if (!thread->init_func) thread->init_func = init_wait_for_logger;
+    if (!thread->exit_func) thread->exit_func = exit_stub;
+    
+    // Call pre-create function
+    if (thread->pre_create_func) {
+        thread->pre_create_func(thread);
+    }
+    
+    // Create the thread
+    if (platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread_x, thread) != 0) {
+        logger_log(LOG_ERROR, "Failed to create thread '%s' in group '%s'", thread->label, group->name);
+        return false;
+    }
+    
+    // Call post-create function
+    if (thread->post_create_func) {
+        thread->post_create_func(thread);
+    }
+    
+    // Register the thread in the group's registry
+    if (!thread_registry_register(&group->registry, thread, thread->thread_id, true)) {
+        logger_log(LOG_ERROR, "Failed to register thread '%s' in group '%s'", thread->label, group->name);
+        return false;
+    }
+    
+    thread_registry_update_state(&group->registry, thread, THREAD_STATE_RUNNING);
+    
+    logger_log(LOG_DEBUG, "Thread '%s' added to group '%s'", thread->label, group->name);
+    return true;
+}
+
+bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
+    if (!group) {
+        return false;
+    }
+    
+    platform_mutex_lock(&group->registry.mutex);
+    
+    ThreadRegistryEntry* entry = group->registry.head;
+    DWORD active_count = 0;
+    
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            // Update thread state to stopping
+            entry->state = THREAD_STATE_STOPPING;
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&group->registry.mutex);
+        return true;
+    }
+    
+    // Collect handles for active threads
+    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    if (!handles) {
+        platform_mutex_unlock(&group->registry.mutex);
+        logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
+        return false;
+    }
+    
+    DWORD i = 0;
+    entry = group->registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state == THREAD_STATE_STOPPING) {
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&group->registry.mutex);
+    
+    // Wait for all threads to terminate
+    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
+    free(handles);
+    
+    if (result == WAIT_OBJECT_0) {
+        // Update all thread states to terminated
+        platform_mutex_lock(&group->registry.mutex);
+        entry = group->registry.head;
+        while (entry != NULL) {
+            if (entry->state == THREAD_STATE_STOPPING) {
+                entry->state = THREAD_STATE_TERMINATED;
+            }
+            entry = entry->next;
+        }
+        platform_mutex_unlock(&group->registry.mutex);
+        
+        logger_log(LOG_DEBUG, "All threads in group '%s' terminated", group->name);
+        return true;
+    } else if (result == WAIT_TIMEOUT) {
+        logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to terminate", group->name);
+        return false;
+    } else {
+        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to terminate: %lu", group->name, GetLastError());
+        return false;
+    }
+}
+
+bool thread_group_wait_all(ThreadGroup* group, DWORD timeout_ms) {
+    if (!group) {
+        return false;
+    }
+    
+    platform_mutex_lock(&group->registry.mutex);
+    
+    DWORD active_count = 0;
+    ThreadRegistryEntry* entry = group->registry.head;
+    
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&group->registry.mutex);
+        return true;
+    }
+    
+    // Allocate handles array
+    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    if (!handles) {
+        platform_mutex_unlock(&group->registry.mutex);
+        logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
+        return false;
+    }
+    
+    // Collect handles
+    DWORD i = 0;
+    entry = group->registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&group->registry.mutex);
+    
+    // Wait for all threads
+    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
+    free(handles);
+    
+    if (result == WAIT_OBJECT_0) {
+        // Update thread states
+        platform_mutex_lock(&group->registry.mutex);
+        entry = group->registry.head;
+        while (entry != NULL) {
+            if (entry->state != THREAD_STATE_TERMINATED) {
+                entry->state = THREAD_STATE_TERMINATED;
+            }
+            entry = entry->next;
+        }
+        platform_mutex_unlock(&group->registry.mutex);
+        
+        logger_log(LOG_DEBUG, "All threads in group '%s' completed", group->name);
+        return true;
+    } else if (result == WAIT_TIMEOUT) {
+        logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to complete", group->name);
+        return false;
+    } else {
+        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to complete: %lu", group->name, GetLastError());
+
+        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to complete: %lu", group->name, GetLastError());
+        return false;
+    }
+}
+
+bool thread_group_is_empty(ThreadGroup* group) {
+    if (!group) {
+        return true;
+    }
+    
+    bool is_empty = false;
+    
+    platform_mutex_lock(&group->registry.mutex);
+    is_empty = (group->registry.head == NULL);
+    platform_mutex_unlock(&group->registry.mutex);
+    
+    return is_empty;
+}
+
+DWORD thread_group_get_active_count(ThreadGroup* group) {
+    if (!group) {
+        return 0;
+    }
+    
+    DWORD active_count = 0;
+    
+    platform_mutex_lock(&group->registry.mutex);
+    
+    ThreadRegistryEntry* entry = group->registry.head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&group->registry.mutex);
+    
+    return active_count;
+}
+
+void thread_group_cleanup(ThreadGroup* group) {
+    if (!group) {
+        return;
+    }
+    
+    thread_registry_cleanup(&group->registry);
+    
+    logger_log(LOG_DEBUG, "Thread group '%s' cleaned up", group->name);
+}

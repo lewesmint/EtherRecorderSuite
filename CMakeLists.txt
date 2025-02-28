@@ -31,5 +31,5 @@ endif()
 
 # Link Windows libraries if on Windows
 if(WIN32)
-    target_link_libraries(ClaudeEther PRIVATE bcrypt ws2_32)
-endif()
+    target_link_libraries(ClaudeEther PRIVATE shlwapi bcrypt ws2_32)
+endif() 

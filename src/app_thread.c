@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <ctype.h>
 
 #include "platform_utils.h"
 #include "platform_threads.h"
@@ -13,6 +15,132 @@
 #include "server_manager.h"
 #include "command_interface.h"
 #include "app_config.h"
+
+
+//////////////////
+#include "thread_registry.h"
+
+// Global thread registry
+static ThreadRegistry g_thread_registry;
+static bool g_registry_initialized = false;
+
+bool app_thread_init(void) {
+    if (g_registry_initialized) {
+        return true;
+    }
+    
+    if (!thread_registry_init(&g_thread_registry)) {
+        fprintf(stderr, "Failed to initialize thread registry\n");
+        return false;
+    }
+    
+    g_registry_initialized = true;
+    return true;
+}
+
+bool app_thread_wait_all(DWORD timeout_ms) {
+    if (!g_registry_initialized) {
+        fprintf(stderr, "Thread registry not initialized\n");
+        return false;
+    }
+    
+    platform_mutex_lock(&g_thread_registry.mutex);
+    
+    // Count active threads and collect handles
+    DWORD active_count = 0;
+    ThreadRegistryEntry* entry = g_thread_registry.head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&g_thread_registry.mutex);
+        return true;
+    }
+    
+    // Allocate handles array
+    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    if (!handles) {
+        platform_mutex_unlock(&g_thread_registry.mutex);
+        logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
+        return false;
+    }
+    
+    // Collect handles
+    DWORD i = 0;
+    entry = g_thread_registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&g_thread_registry.mutex);
+    
+    // Wait for all threads
+    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
+    free(handles);
+    
+    if (result == WAIT_OBJECT_0) {
+        return true;
+    } else if (result == WAIT_TIMEOUT) {
+        logger_log(LOG_WARN, "Timeout waiting for threads to complete");
+        return false;
+    } else {
+        logger_log(LOG_ERROR, "Error waiting for threads to complete: %lu", GetLastError());
+        return false;
+    }
+}
+
+bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_label) {
+    if (!suppressed_list || !thread_label) {
+        return false;
+    }
+    
+    // Create a copy of the suppressed list for tokenization
+    char* list_copy = strdup(suppressed_list);
+    if (!list_copy) {
+        return false;
+    }
+    
+    bool suppressed = false;
+    char* saveptr = NULL;
+    char* token = strtok_s(list_copy, ",", &saveptr);
+    
+    while (token != NULL) {
+        // Trim leading and trailing whitespace
+        char* start = token;
+        while (*start && isspace(*start)) start++;
+        
+        char* end = start + strlen(start) - 1;
+        while (end > start && isspace(*end)) *end-- = '\0';
+        
+        // Check if the token matches the thread label
+        if (str_cmp_nocase(start, thread_label) == 0) {
+            suppressed = true;
+            break;
+        }
+        
+        token = strtok_s(NULL, ",", &saveptr);
+    }
+    
+    free(list_copy);
+    return suppressed;
+}
+
+void app_thread_cleanup(void) {
+    if (!g_registry_initialized) {
+        return;
+    }
+    
+    thread_registry_cleanup(&g_thread_registry);
+    g_registry_initialized = false;
+}
+
 
 extern bool shutdown_signalled(void);
 
@@ -36,7 +164,7 @@ typedef enum WaitResult {
     APP_WAIT_ERROR = -1
 } WaitResult;
 
-void* app_thread(AppThread_T* thread_args) {
+void* app_thread_x(AppThread_T* thread_args) {
     if (thread_args->init_func) {
         if ((WaitResult)(uintptr_t)thread_args->init_func(thread_args) != APP_WAIT_SUCCESS) {
             printf("[%s] Initialisation failed, exiting thread\n", thread_args->label);
@@ -53,7 +181,7 @@ void* app_thread(AppThread_T* thread_args) {
 void create_app_thread(AppThread_T *thread) {
     if (thread->pre_create_func)
         thread->pre_create_func(thread);
-    platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread, thread);
+    platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread_x, thread);
 
     if (thread->post_create_func)
         thread->post_create_func(thread);
@@ -66,8 +194,6 @@ void set_thread_label(const char *label) {
 const char* get_thread_label() {
     return thread_label;
 }
-
-void wait_for_all_other_threads_to_complete(void);
 
 void* pre_create_stub(void* arg) {
     (void)arg;
@@ -153,6 +279,60 @@ void* init_wait_for_logger(void* arg) {
 
     return (void*)APP_WAIT_SUCCESS;
 }
+
+bool app_thread_create(AppThread_T* thread) {
+    if (!g_registry_initialized) {
+        fprintf(stderr, "Thread registry not initialized\n");
+        return false;
+    }
+    
+    if (!thread) {
+        return false;
+    }
+    
+    // Check if the thread is already registered
+    if (thread_registry_is_registered(&g_thread_registry, thread)) {
+        logger_log(LOG_WARN, "Thread '%s' is already registered", thread->label);
+        return false;
+    }
+    
+    // Handle stubbed function pointers
+    if (!thread->pre_create_func) thread->pre_create_func = pre_create_stub;
+    if (!thread->post_create_func) thread->post_create_func = post_create_stub;
+    if (!thread->init_func) thread->init_func = init_wait_for_logger;
+    if (!thread->exit_func) thread->exit_func = exit_stub;
+    
+    // Call pre-create function
+    if (thread->pre_create_func) {
+        thread->pre_create_func(thread);
+    }
+    
+    // Create the thread
+    HANDLE thread_handle = NULL;
+    if (platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread_x, thread) != 0) {
+        logger_log(LOG_ERROR, "Failed to create thread '%s'", thread->label);
+        return false;
+    }
+    
+    thread_handle = thread->thread_id;
+    
+    // Call post-create function
+    if (thread->post_create_func) {
+        thread->post_create_func(thread);
+    }
+    
+    // Register the thread
+    if (!thread_registry_register(&g_thread_registry, thread, thread_handle, true)) {
+        logger_log(LOG_ERROR, "Failed to register thread '%s'", thread->label);
+        return false;
+    }
+    
+    // Update thread state
+    thread_registry_update_state(&g_thread_registry, thread, THREAD_STATE_RUNNING);
+    
+    return true;
+}
+
 
 void* logger_thread_function(void* arg) {
     AppThread_T* thread_info = (AppThread_T*)arg;
@@ -262,86 +442,6 @@ static AppThread_T* all_threads[] = {
     &logger_thread
 };
 
-bool wait_for_all_threads_to_complete(int time_ms)
-{
-    // uint32_t num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
-
-    HANDLE threadHandles[NUM_THREADS];
-    memset(threadHandles, 0, sizeof(threadHandles));
-
-    DWORD j = 0;
-    // build an array of thread handles from structure, careful of suppressed threads
-    for (size_t i = 0; i < NUM_THREADS; i++) {
-        if (all_threads[i]->suppressed) {
-            continue;
-        }
-        threadHandles[j] = all_threads[i]->thread_id;
-        j++;
-    }
-
-    if (j == 0) {
-        fprintf(stderr, "No threads to wait for\n");
-        return true;
-    }
-
-    DWORD waitResult = WaitForMultipleObjects(j, threadHandles, TRUE, time_ms);
-
-    if (waitResult == WAIT_FAILED) {
-        DWORD err = GetLastError();
-        logger_log(LOG_ERROR, "WaitForMultipleObjects failed: %lu\n", err);
-        // handle error appropriately
-    }
-    else if (waitResult == WAIT_TIMEOUT) {
-        return false;
-    } else {
-        printf("all threads have completed\n");
-
-    }
-    // Close the thread handles, done with them.
-    for (size_t i = 0; i < j; i++) {
-        if (threadHandles[i] != NULL) {
-            CloseHandle(threadHandles[i]);
-        }
-    }
-    return true;
-}
-
-
-void wait_for_all_other_threads_to_complete(void)
-{
-    // int num_threads = sizeof(all_threads) / sizeof(all_threads[0]);
-
-    HANDLE threadHandles[NUM_THREADS];
-    memset(threadHandles, 0, sizeof(threadHandles));
-
-    DWORD j = 0;
-
-    for (size_t i = 0; i < NUM_THREADS; i++) {
-        if (all_threads[i]->suppressed ||
-            str_cmp_nocase(all_threads[i]->label, get_thread_label())) {
-            continue;
-        }
-        threadHandles[j++] = all_threads[i]->thread_id;
-    }
-
-    DWORD waitResult = WaitForMultipleObjects(j, threadHandles, TRUE, INFINITE);
-
-    if (waitResult == WAIT_FAILED) {
-        DWORD err = GetLastError();
-        logger_log(LOG_ERROR, "WaitForMultipleObjects failed: %lu\n", err);
-    }
-    else {
-        logger_log(LOG_INFO, "Logger has seen all other threads complete");
-    }
-
-    LogEntry_T entry;
-    while (log_queue_pop(&global_log_queue, &entry)) {
-        if (*entry.thread_label == '\0')
-            printf("Logger thread processing log from: NULL\n");
-        log_now(&entry);
-    }
-}
-
 void check_for_suppression(void) {
     const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
 
@@ -365,12 +465,95 @@ void check_for_suppression(void) {
 void start_threads(void) {
     InitializeConditionVariable(&logger_thread_condition);
     InitializeCriticalSection(&logger_thread_mutex_in_app_thread);
+    
+    // Initialize thread registry
+    if (!app_thread_init()) {
+        fprintf(stderr, "Failed to initialize thread registry\n");
+        return;
+    }
+    
+    // Get suppressed threads from configuration
+    const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
+    
+    // Create logger thread first (always required)
+    if (!app_thread_is_suppressed(suppressed_list, "LOGGER")) {
+        app_thread_create(&logger_thread);
+    }
+    
+    // Create other threads if not suppressed
+    if (!app_thread_is_suppressed(suppressed_list, "CLIENT")) {
+        app_thread_create(&client_thread);
+    }
+    
+    if (!app_thread_is_suppressed(suppressed_list, "SERVER")) {
+        app_thread_create(&server_thread);
+    }
+    
+    if (!app_thread_is_suppressed(suppressed_list, "COMMAND_INTERFACE")) {
+        app_thread_create(&command_interface_thread);
+    }
+}
 
-    check_for_suppression();
+bool wait_for_all_threads_to_complete(int time_ms) {
+    return app_thread_wait_all(time_ms);
+}
 
-    for (int i = 0; i < NUM_THREADS; i++) {
-        if (!all_threads[i]->suppressed) {
-            create_app_thread(all_threads[i]);
+void wait_for_all_other_threads_to_complete(void) {
+    // Get the current thread label
+    const char* current_thread_label = get_thread_label();
+    
+    // Lock the registry mutex
+    platform_mutex_lock(&g_thread_registry.mutex);
+    
+    // Count active threads and collect handles
+    DWORD active_count = 0;
+    ThreadRegistryEntry* entry = g_thread_registry.head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED && 
+            entry->thread && entry->thread->label && 
+            strcmp(entry->thread->label, current_thread_label) != 0) {
+            active_count++;
         }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&g_thread_registry.mutex);
+        return;
+    }
+    
+    // Allocate handles array
+    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    if (!handles) {
+        platform_mutex_unlock(&g_thread_registry.mutex);
+        logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
+        return;
+    }
+    
+    // Collect handles
+    DWORD i = 0;
+    entry = g_thread_registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state != THREAD_STATE_TERMINATED && 
+            entry->thread && entry->thread->label && 
+            strcmp(entry->thread->label, current_thread_label) != 0) {
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&g_thread_registry.mutex);
+    
+    // Wait for all other threads
+    WaitForMultipleObjects(active_count, handles, TRUE, INFINITE);
+    free(handles);
+    
+    logger_log(LOG_INFO, "Thread '%s' has seen all other threads complete", current_thread_label);
+    
+    // Process any remaining log messages
+    LogEntry_T log_entry;
+
+    while (log_queue_pop(&global_log_queue, &log_entry)) {
+        log_now(&log_entry);
     }
 }

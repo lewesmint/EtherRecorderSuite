@@ -17,11 +17,6 @@
 #include "client_manager.h"
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 /**
  * @brief Function pointer type for pre-create functions.
  * @param arg Argument to the function.
@@ -101,8 +96,7 @@ void wait_for_all_other_threads_to_complete(void);
  */
 void create_app_thread(AppThread_T *thread);
 
-#ifdef __cplusplus
-}
-#endif // __cplusplus
+void app_thread_cleanup(void);
 
+void* app_thread_x(AppThread_T* thread_args);
 #endif // APP_THREAD_H

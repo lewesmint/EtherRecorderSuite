@@ -119,28 +119,16 @@ int main(int argc, char* argv[]) {
         return app_error;
     }
 
-    // Now it's safe to log messages, though the dedicaetd logger thread
+    // Now it's safe to log messages, though the dedicated logger thread
     // is not yet running
     logger_log(LOG_INFO, "Logger initialised successfully");
 
     // Start threads.
     // Successfully starting the logging thread will mean that logging will
-    // utilise a log message queue, for asynchronous operation, to avoid threads 
+    // utilize a log message queue, for asynchronous operation, to avoid threads 
     // blocking on logging.
     start_threads();
     logger_log(LOG_DEBUG, "App threads started");
-
-  //   // if we need to do something before final shutdown then wait for shutdown 
-  //   // to be indicated, do it, then wait for all the thread to complete
-	 //wait_for_shutdown_signal(INFINITE);
-
-//    while (true) {
-//         sleep_seconds(5);
-//           if (wait_for_all_threads_to_complete()) {
-//         if (wait_for_shutdown_signal(INFINITE)) {
-//              logger_log(LOG_DEBUG, "HEARTBEAT");
-//         }
-//     }
 
     while (true) {
         if (wait_for_all_threads_to_complete(7620)) {
@@ -149,5 +137,9 @@ int main(int argc, char* argv[]) {
             logger_log(LOG_DEBUG, "HEARTBEAT");
         }
     }
+    
+    // Clean up thread management system
+    app_thread_cleanup();
+    
     return app_exit();
 }

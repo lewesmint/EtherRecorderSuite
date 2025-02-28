@@ -1,11 +1,221 @@
 #include "comm_threads.h"
 #include <string.h>
-
 #include "logger.h"
 #include "platform_utils.h"
+#include "thread_group.h"
 
 
 extern bool shutdown_signalled(void);
+
+// External declarations for stub functions
+extern void* pre_create_stub(void* arg);
+extern void* post_create_stub(void* arg);
+extern void* init_stub(void* arg);
+extern void* exit_stub(void* arg);
+extern void* init_wait_for_logger(void* arg);
+extern bool shutdown_signalled(void);
+
+
+bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile LONG* connection_closed) {
+    if (!group || !name || !socket || !connection_closed) {
+        return false;
+    }
+    
+    group->socket = socket;
+    group->connection_closed = connection_closed;
+    
+    // Initialize message queues
+    group->incoming_queue = (MessageQueue_T*)malloc(sizeof(MessageQueue_T));
+    group->outgoing_queue = (MessageQueue_T*)malloc(sizeof(MessageQueue_T));
+    
+    if (!group->incoming_queue || !group->outgoing_queue) {
+        free(group->incoming_queue);
+        free(group->outgoing_queue);
+        return false;
+    }
+    
+    message_queue_init(group->incoming_queue, 0);  // No size limit
+    message_queue_init(group->outgoing_queue, 0);  // No size limit
+    
+    // Initialize base thread group
+    return thread_group_init(&group->base, name);
+}
+
+bool comms_thread_group_create_threads(CommsThreadGroup* group, struct sockaddr_in* client_addr, void* thread_info) {
+    if (!group || !client_addr) {
+        return false;
+    }
+    
+    // Set up send thread
+    AppThread_T* send_thread = (AppThread_T*)malloc(sizeof(AppThread_T));
+    if (!send_thread) {
+        logger_log(LOG_ERROR, "Failed to allocate memory for send thread");
+        return false;
+    }
+    
+    memset(send_thread, 0, sizeof(AppThread_T));
+    
+    char* send_thread_label = (char*)malloc(64);
+    if (!send_thread_label) {
+        free(send_thread);
+        logger_log(LOG_ERROR, "Failed to allocate memory for send thread label");
+        return false;
+    }
+    
+    snprintf(send_thread_label, 64, "%s.SEND", group->base.name);
+    
+    send_thread->label = send_thread_label;
+    send_thread->func = send_thread;
+    send_thread->pre_create_func = pre_create_stub;
+    send_thread->post_create_func = post_create_stub;
+    send_thread->init_func = init_wait_for_logger;
+    send_thread->exit_func = exit_stub;
+    
+    // Create comm args for send thread
+    CommArgs_T* send_args = (CommArgs_T*)malloc(sizeof(CommArgs_T));
+    if (!send_args) {
+        free(send_thread_label);
+        free(send_thread);
+        logger_log(LOG_ERROR, "Failed to allocate memory for send thread args");
+        return false;
+    }
+    
+    memset(send_args, 0, sizeof(CommArgs_T));
+    
+    send_args->sock = group->socket;
+    send_args->client_addr = *client_addr;
+    send_args->thread_info = thread_info;
+    send_args->connection_closed = group->connection_closed;
+    send_args->incoming_queue = group->incoming_queue;
+    send_args->outgoing_queue = group->outgoing_queue;
+    
+    send_thread->data = send_args;
+    
+    // Set up receive thread
+    AppThread_T* receive_thread = (AppThread_T*)malloc(sizeof(AppThread_T));
+    if (!receive_thread) {
+        free(send_args);
+        free(send_thread_label);
+        free(send_thread);
+        logger_log(LOG_ERROR, "Failed to allocate memory for receive thread");
+        return false;
+    }
+    
+    memset(receive_thread, 0, sizeof(AppThread_T));
+    
+    char* receive_thread_label = (char*)malloc(64);
+    if (!receive_thread_label) {
+        free(send_args);
+        free(send_thread_label);
+        free(send_thread);
+        free(receive_thread);
+        logger_log(LOG_ERROR, "Failed to allocate memory for receive thread label");
+        return false;
+    }
+    
+    snprintf(receive_thread_label, 64, "%s.RECEIVE", group->base.name);
+    
+    receive_thread->label = receive_thread_label;
+    receive_thread->func = receive_thread;
+    receive_thread->pre_create_func = pre_create_stub;
+    receive_thread->post_create_func = post_create_stub;
+    receive_thread->init_func = init_wait_for_logger;
+    receive_thread->exit_func = exit_stub;
+    
+    // Create comm args for receive thread
+    CommArgs_T* receive_args = (CommArgs_T*)malloc(sizeof(CommArgs_T));
+    if (!receive_args) {
+        free(send_args);
+        free(send_thread_label);
+        free(send_thread);
+        free(receive_thread_label);
+        free(receive_thread);
+        logger_log(LOG_ERROR, "Failed to allocate memory for receive thread args");
+        return false;
+    }
+    
+    memset(receive_args, 0, sizeof(CommArgs_T));
+    
+    receive_args->sock = group->socket;
+    receive_args->client_addr = *client_addr;
+    receive_args->thread_info = thread_info;
+    receive_args->connection_closed = group->connection_closed;
+    receive_args->incoming_queue = group->incoming_queue;
+    receive_args->outgoing_queue = group->outgoing_queue;
+    
+    receive_thread->data = receive_args;
+    
+    // Add threads to the group
+    if (!thread_group_add(&group->base, send_thread)) {
+        free(receive_args);
+        free(receive_thread_label);
+        free(receive_thread);
+        free(send_args);
+        free(send_thread_label);
+        free(send_thread);
+        logger_log(LOG_ERROR, "Failed to add send thread to group");
+        return false;
+    }
+    
+    if (!thread_group_add(&group->base, receive_thread)) {
+        free(receive_args);
+        free(receive_thread_label);
+        free(receive_thread);
+        logger_log(LOG_ERROR, "Failed to add receive thread to group");
+        return false;
+    }
+    
+    return true;
+}
+
+bool comms_thread_group_is_closed(CommsThreadGroup* group) {
+    if (!group || !group->connection_closed) {
+        return true;
+    }
+    
+    return InterlockedCompareExchange(group->connection_closed, 0, 0) != 0;
+}
+
+void comms_thread_group_close(CommsThreadGroup* group) {
+    if (!group || !group->connection_closed) {
+        return;
+    }
+    
+    InterlockedExchange(group->connection_closed, TRUE);
+    logger_log(LOG_DEBUG, "Communication group '%s' marked as closed", group->base.name);
+}
+
+bool comms_thread_group_wait(CommsThreadGroup* group, DWORD timeout_ms) {
+    if (!group) {
+        return false;
+    }
+    
+    return thread_group_wait_all(&group->base, timeout_ms);
+}
+
+void comms_thread_group_cleanup(CommsThreadGroup* group) {
+    if (!group) {
+        return;
+    }
+    
+    // Clean up base thread group first
+    thread_group_cleanup(&group->base);
+    
+    // Clean up message queues
+    if (group->incoming_queue) {
+        message_queue_destroy(group->incoming_queue);
+        free(group->incoming_queue);
+        group->incoming_queue = NULL;
+    }
+    
+    if (group->outgoing_queue) {
+        message_queue_destroy(group->outgoing_queue);
+        free(group->outgoing_queue);
+        group->outgoing_queue = NULL;
+    }
+    
+    logger_log(LOG_DEBUG, "Communication thread group cleaned up");
+}
 
 /**
  * @brief Set the connection closed flag atomically

@@ -10,6 +10,7 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <direct.h>
+    #include <bcrypt.h>
     // #include <shlwapi.h>
     //// it is necessary to link with shlwapi.lib,
     //// but it is done in the project file. So pragma not required

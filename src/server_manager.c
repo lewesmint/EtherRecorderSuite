@@ -238,44 +238,28 @@ void* serverListenerThread(void* arg) {
         // Create a flag for tracking connection state
         volatile LONG connection_closed_flag = FALSE;
         
-        // Set up the communication data
-        CommArgs_T comm_args = {
-            .sock = &client_sock,
-            .client_addr = client_addr,
-            .thread_info = server_info,
-            .connection_closed = &connection_closed_flag
-        };
+        // Create communication thread group
+        CommsThreadGroup comms_group;
+        if (!comms_thread_group_init(&comms_group, "SERVER_CLIENT", &client_sock, &connection_closed_flag)) {
+            logger_log(LOG_ERROR, "Failed to initialize communication thread group");
+            close_socket(&client_sock);
+            continue;
+        }
         
-        // Create local copies of thread arguments
-        AppThread_T send_thread_local = server_send_thread;
-        AppThread_T receive_thread_local = server_receive_thread;
+        // Create communication threads
+        if (!comms_thread_group_create_threads(&comms_group, &client_addr, server_info)) {
+            logger_log(LOG_ERROR, "Failed to create communication threads");
+            comms_thread_group_cleanup(&comms_group);
+            close_socket(&client_sock);
+            continue;
+        }
         
-        // Set up thread data
-        send_thread_local.data = &comm_args;
-        receive_thread_local.data = &comm_args;
-        send_thread_local.suppressed = false;
-        receive_thread_local.suppressed = false;
-        
-        // Create the communication threads
-        create_app_thread(&send_thread_local);
-        create_app_thread(&receive_thread_local);
-        
-        // Store thread handles for cleanup
-        HANDLE send_thread_handle = send_thread_local.thread_id;
-        HANDLE receive_thread_handle = receive_thread_local.thread_id;
-        
-        // Wait for the threads to complete or for a shutdown signal
+        // Wait for communication threads or shutdown
         int retry_count = 0;
-        while (!shutdown_signalled()) {
+        while (!shutdown_signalled() && !comms_thread_group_is_closed(&comms_group)) {
             logger_log(LOG_DEBUG, "SERVER: Waiting for send and receive threads");
             
-            bool threads_completed = wait_for_communication_threads(
-                send_thread_handle, 
-                receive_thread_handle, 
-                thread_wait_timeout,
-                &connection_closed_flag
-            );
-            
+            bool threads_completed = comms_thread_group_wait(&comms_group, thread_wait_timeout);
             if (threads_completed) {
                 break;
             }
@@ -289,8 +273,8 @@ void* serverListenerThread(void* arg) {
             }
         }
         
-        // Clean up thread handles
-        cleanup_thread_handles(send_thread_handle, receive_thread_handle);
+        // Clean up
+        comms_thread_group_cleanup(&comms_group);
         
         // Close the client socket
         logger_log(LOG_INFO, "Closing client socket");

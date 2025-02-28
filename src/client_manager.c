@@ -212,7 +212,6 @@ void* clientMainThread(void* arg) {
     
     int conn_timeout = get_config_int("network", "client.connection_timeout_seconds", DEFAULT_CONNECTION_TIMEOUT_SECONDS);
     int thread_wait_timeout = get_config_int("network", "client.thread_wait_timeout_ms", DEFAULT_THREAD_WAIT_TIMEOUT_MS);
-    int retry_limit = get_config_int("network", "client.retry_limit", DEFAULT_RETRY_LIMIT);
     
     logger_log(LOG_INFO, "Client Manager will attempt to connect to Server: %s, port: %d", 
                client_info->server_hostname, client_info->port);
@@ -220,12 +219,11 @@ void* clientMainThread(void* arg) {
     int port = client_info->port;
     bool is_tcp = client_info->is_tcp;
     bool is_server = false;
-    SOCKET sock = INVALID_SOCKET;
-    int retry_count = 0;
-
-    struct sockaddr_in addr, client_addr;
-
+    
     while (!shutdown_signalled()) {
+        SOCKET sock = INVALID_SOCKET;
+        struct sockaddr_in addr, client_addr;
+        
         memset(&addr, 0, sizeof(addr));
         memset(&client_addr, 0, sizeof(client_addr));
 
@@ -237,70 +235,52 @@ void* clientMainThread(void* arg) {
             return NULL;
         }
 
-        // Create a structure with connection information for the threads
+        // Create a flag for tracking connection state
         volatile LONG connection_closed_flag = FALSE;
         
-        CommArgs_T comm_args = {
-            .sock = &sock, 
-            .client_addr = client_addr, 
-            .thread_info = client_info,
-            .connection_closed = &connection_closed_flag
-        };
+        // Create communication thread group
+        CommsThreadGroup comms_group;
+        if (!comms_thread_group_init(&comms_group, "CLIENT", &sock, &connection_closed_flag)) {
+            logger_log(LOG_ERROR, "Failed to initialize communication thread group");
+            close_socket(&sock);
+            continue;
+        }
         
-        // Create local copies of thread args
-        AppThread_T send_thread_local = client_send_thread;
-        AppThread_T receive_thread_local = client_receive_thread;
-        
-        send_thread_local.data = &comm_args;
-        receive_thread_local.data = &comm_args;
-        send_thread_local.suppressed = false;
-        receive_thread_local.suppressed = false;
-   
         // Create communication threads
-        create_app_thread(&send_thread_local);
-        create_app_thread(&receive_thread_local);
-
-        // Store thread handles for cleanup
-        HANDLE send_thread_handle = send_thread_local.thread_id;
-        HANDLE receive_thread_handle = receive_thread_local.thread_id;
-
-        bool need_retry = false;
+        if (!comms_thread_group_create_threads(&comms_group, &client_addr, client_info)) {
+            logger_log(LOG_ERROR, "Failed to create communication threads");
+            comms_thread_group_cleanup(&comms_group);
+            close_socket(&sock);
+            continue;
+        }
         
-        // Wait for send and receive threads to complete or timeout
-        while (!shutdown_signalled()) {
+        // Wait for communication threads or shutdown
+        int retry_count = 0;
+        while (!shutdown_signalled() && !comms_thread_group_is_closed(&comms_group)) {
             logger_log(LOG_DEBUG, "CLIENT: Waiting for send and receive threads");
-
-            bool threads_completed = wait_for_communication_threads(
-                send_thread_handle, 
-                receive_thread_handle, 
-                thread_wait_timeout,
-                &connection_closed_flag
-            );
             
+            bool threads_completed = comms_thread_group_wait(&comms_group, thread_wait_timeout);
             if (threads_completed) {
                 break;
             }
             
             // Check if we've exceeded the retry limit for stuck threads
             retry_count++;
+            int retry_limit = get_config_int("network", "client.retry_limit", DEFAULT_RETRY_LIMIT);
             if (retry_limit > 0 && retry_count >= retry_limit) {
                 logger_log(LOG_ERROR, "Exceeded retry limit (%d) for stuck threads, forcing reconnection", retry_limit);
-                need_retry = true;
                 break;
             }
         }
-
-        // Clean up thread handles
-        cleanup_thread_handles(send_thread_handle, receive_thread_handle);
-
+        
+        // Clean up
+        comms_thread_group_cleanup(&comms_group);
+        
         // Close the socket
         logger_log(LOG_INFO, "Closing client socket");
         if (sock != INVALID_SOCKET) {
             close_socket(&sock);
         }
-
-        // Reset retry count for next connection
-        retry_count = 0;
 
         // If shutting down, exit the thread
         if (shutdown_signalled()) {
