@@ -1,93 +1,61 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-      {
-        "label": "CMake: configure (Windows Debug)",
-        "type": "shell",
-        "command": "cmake --preset windows-debug",
-        "group": {
-          "kind": "build",
-          "isDefault": true
-        },
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (Windows Debug)",
-        "type": "shell",
-        "command": "cmake --build --preset windows-debug",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: configure (Windows Release)",
-        "type": "shell",
-        "command": "cmake --preset windows-release",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (Windows Release)",
-        "type": "shell",
-        "command": "cmake --build --preset windows-release",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: configure (macOS Debug)",
-        "type": "shell",
-        "command": "cmake --preset macos-debug",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (macOS Debug)",
-        "type": "shell",
-        "command": "cmake --build --preset macos-debug",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: configure (macOS Release)",
-        "type": "shell",
-        "command": "cmake --preset macos-release",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (macOS Release)",
-        "type": "shell",
-        "command": "cmake --build --preset macos-release",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: configure (Linux Debug)",
-        "type": "shell",
-        "command": "cmake --preset linux-debug",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (Linux Debug)",
-        "type": "shell",
-        "command": "cmake --build --preset linux-debug",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: configure (Linux Release)",
-        "type": "shell",
-        "command": "cmake --preset linux-release",
-        "group": "build",
-        "problemMatcher": []
-      },
-      {
-        "label": "CMake: build (Linux Release)",
-        "type": "shell",
-        "command": "cmake --build --preset linux-release",
-        "group": "build",
-        "problemMatcher": []
-      }
-    ]
-  }
-  
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: build (win32-debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "win32-debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: build (win32-release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "win32-release"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: build (x64-debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "x64-debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: build (x64-release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "x64-release"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "type": "cmake",
+      "label": "CMake: configure",
+      "command": "configure",
+      "preset": "${command:cmake.activeConfigurePresetName}",
+      "problemMatcher": [],
+      "detail": "CMake template configure task"
+    }
+  ]
+}
