@@ -384,7 +384,7 @@ static CommsThreadArgs_T server_thread_args = {
     .data = &test_send_data,
     .data_size = sizeof(test_send_data),
     .send_interval_ms = 2000,
-    .port = 4100,
+    .port = 4150,
     .is_tcp = true
 };
 
@@ -432,7 +432,7 @@ AppThread_T logger_thread = {
 
 static AppThread_T* all_threads[] = {
     &client_thread,
-    &server_thread,
+    // &server_thread,
     &server_receive_thread,
     &server_send_thread,
     &client_receive_thread,

@@ -5,7 +5,7 @@
             "name": "Debug (Windows)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/windows-debug/ClaudeEther.exe",
+            "program": "${workspaceFolder}/build/windows-debug/Debug/ClaudeEther.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
             "stopAtEntry": true,

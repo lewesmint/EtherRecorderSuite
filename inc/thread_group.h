@@ -41,6 +41,15 @@ bool thread_group_init(ThreadGroup* group, const char* name);
 bool thread_group_add(ThreadGroup* group, AppThread_T* thread);
 
 /**
+ * @brief Remove a thread from a thread group
+ * 
+ * @param group Pointer to the thread group
+ * @param thread_label Label of the thread to remove
+ * @return bool true on success, false on failure
+ */
+bool thread_group_remove(ThreadGroup* group, const char* thread_label);
+
+/**
  * @brief Terminate all threads in a thread group
  * 
  * @param group Pointer to the thread group

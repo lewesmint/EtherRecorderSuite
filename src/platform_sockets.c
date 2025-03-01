@@ -257,12 +257,7 @@ SOCKET setup_socket(bool is_server, bool is_tcp, struct sockaddr_in *addr, struc
     }
 
     addr->sin_family = AF_INET;
-    // Validate port range before conversion
-    if (port < 0 || port > UINT16_MAX) {
-        close_socket(&sock);
-        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_BIND);
-    }
-    addr->sin_port = htons((uint16_t)port);
+    addr->sin_port = htons(port);
 
     if (is_server) {
         addr->sin_addr.s_addr = INADDR_ANY; // Bind to all available interfaces

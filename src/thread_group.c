@@ -67,6 +67,53 @@ bool thread_group_add(ThreadGroup* group, AppThread_T* thread) {
     return true;
 }
 
+bool thread_group_remove(ThreadGroup* group, const char* thread_label) {
+    if (!group || !thread_label) {
+        return false;
+    }
+    
+    platform_mutex_lock(&group->registry.mutex);
+    
+    // Find the thread entry with the matching label
+    ThreadRegistryEntry* entry = group->registry.head;
+    ThreadRegistryEntry* prev = NULL;
+    
+    while (entry != NULL) {
+        AppThread_T* thread = entry->thread;
+        
+        if (thread && thread->label && strcmp(thread->label, thread_label) == 0) {
+            // Found the thread, remove it from the registry
+            
+            // Update linked list
+            if (prev == NULL) {
+                group->registry.head = entry->next;
+            } else {
+                prev->next = entry->next;
+            }
+            
+            // Update thread count
+            group->registry.count--;
+            
+            // Free the registry entry
+            free(entry);
+            
+            platform_mutex_unlock(&group->registry.mutex);
+            
+            logger_log(LOG_DEBUG, "Removed thread '%s' from group '%s'", 
+                      thread_label, group->name);
+            return true;
+        }
+        
+        prev = entry;
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&group->registry.mutex);
+    logger_log(LOG_WARN, "Thread '%s' not found in group '%s'", 
+              thread_label, group->name);
+    return false;
+}
+
 bool thread_group_terminate_all(ThreadGroup* group, uint32_t timeout_ms) {
     if (!group) {
         return false;
