@@ -453,6 +453,9 @@ bool platform_event_set(PlatformEvent_T* event) {
 #endif
 }
 
+/*
+* Reset an event to non-signaled state
+*/
 bool platform_event_reset(PlatformEvent_T* event) {
     if (!event) {
         return false;
@@ -473,25 +476,20 @@ bool platform_event_reset(PlatformEvent_T* event) {
 #endif
 }
 
+
+/*
+* Wait for an event to be signaled
+*/
 int platform_event_wait(PlatformEvent_T* event, uint32_t timeout_ms) {
     if (!event) {
         return PLATFORM_WAIT_ERROR;
     }
-    
+
 #ifdef _WIN32
     if (!*event) {
         return PLATFORM_WAIT_ERROR;
     }
-    
-    DWORD result = WaitForSingleObject(*event, timeout_ms);
-    switch (result) {
-        case WAIT_OBJECT_0:
-            return PLATFORM_WAIT_SUCCESS;
-        case WAIT_TIMEOUT:
-            return PLATFORM_WAIT_TIMEOUT;
-        default:
-            return PLATFORM_WAIT_ERROR;
-    }
+    return platform_translate_wait_result(WaitForSingleObject(*event, timeout_ms), 1);
 #else
     pthread_mutex_lock(&event->mutex);
     

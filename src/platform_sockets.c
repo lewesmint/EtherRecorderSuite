@@ -4,6 +4,7 @@
  */
 
 #include "platform_sockets.h"
+#include "platform_error.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -165,58 +166,22 @@ const char* platform_socket_strerror(PlatformSocketError error) {
  * @param buffer_size  The size of the buffer.
  */
 void get_socket_error_message(char* buffer, size_t buffer_size) {
-#ifdef _WIN32
-    int errorCode = WSAGetLastError();
-    LPSTR lpMsgBuf = NULL;
-    FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        errorCode,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPSTR)&lpMsgBuf,
-        0,
-        NULL
-    );
-    snprintf(buffer, buffer_size, "Socket operation failed with error: %d: %s",
-        errorCode, lpMsgBuf ? lpMsgBuf : "Unknown error");
-    if (lpMsgBuf) {
-        LocalFree(lpMsgBuf);
-    }
-#else
-    int errsv = errno;
-    snprintf(buffer, buffer_size, "Socket operation failed with error: %d: %s",
-        errsv, strerror(errsv));
-#endif
+    platform_get_socket_error_message(buffer, buffer_size);
 }
 
+/**
+ * Retrieves detailed socket error information as a string.
+ * The error message is written to the provided buffer.
+ *
+ * @param buffer       The buffer to store the error message.
+ * @param buffer_size  The size of the buffer.
+ */
 const char* socket_error_string(void) {
-#ifdef _WIN32
-    static char buffer[256] = {0};
-    int error_code = WSAGetLastError();
-    
-    if (FormatMessageA(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        error_code,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        buffer,
-        sizeof(buffer) - 1,
-        NULL) == 0) {
-        // FormatMessage failed
-        snprintf(buffer, sizeof(buffer) - 1, "Socket error %d", error_code);
-    }
-    
-    // Remove trailing newline/carriage return if present
-    char* end = buffer + strlen(buffer) - 1;
-    while (end >= buffer && (*end == '\n' || *end == '\r' || *end == '.')) {
-        *end-- = '\0';
-    }
-    
+    static char buffer[256];
+    platform_get_socket_error_message(buffer, sizeof(buffer));
     return buffer;
-#else
-    return strerror(errno);
-#endif
 }
+
 
 SOCKET setup_listening_server_socket(struct sockaddr_in* addr, uint16_t port) {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
