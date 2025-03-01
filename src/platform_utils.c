@@ -12,10 +12,6 @@
     #include <windows.h>
     #include <direct.h>  // Already included but needed for _fullpath
     #include <bcrypt.h>
-    // #include <shlwapi.h>
-    //// it is necessary to link with shlwapi.lib,
-    //// but it is done in the project file. So pragma not required
-    //// #pragma comment(lib, "shlwapi.lib")
 #else // !_WIN32
     #include <pthread.h>
     #include <unistd.h>
@@ -35,9 +31,6 @@
 
 // extern CRITICAL_SECTION rand_mutex;
 
-void get_high_resolution_timestamp(PlatformHighResTimestamp_T *timestamp) {
-    QueryPerformanceCounter(timestamp);
-}
 
 uint64_t platform_strtoull(const char *str, char **endptr, int base) {
     return strtoull(str, endptr, base);

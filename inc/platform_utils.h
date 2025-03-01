@@ -175,8 +175,6 @@ uint32_t platform_random();
 uint32_t platform_random_range(uint32_t min, uint32_t max);
 
 char* get_cwd(char* buffer, int max_length);
-void get_high_resolution_timestamp(PlatformHighResTimestamp_T* timestamp);
-
 /**
  * @brief Function type for shutdown callbacks
  */
