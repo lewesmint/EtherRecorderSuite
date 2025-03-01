@@ -43,7 +43,7 @@ typedef struct ThreadRegistryEntry {
 typedef struct ThreadRegistry {
     ThreadRegistryEntry* head;          // Head of the registry entries linked list
     PlatformMutex_T mutex;              // Mutex for thread-safe operations
-    DWORD count;                        // Number of registered threads
+    uint32_t count;                     // Number of registered threads
 } ThreadRegistry;
 
 /**
@@ -64,7 +64,7 @@ bool thread_registry_init(ThreadRegistry* registry);
  * @return bool true on success, false on failure
  */
 bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, 
-                            PlatformThread_T handle, bool auto_cleanup);
+                            ThreadHandle_T handle, bool auto_cleanup);
 
 /**
  * @brief Update a thread's state in the registry
@@ -101,7 +101,7 @@ ThreadRegistryEntry* thread_registry_find_by_label(ThreadRegistry* registry, con
  * @param handle Thread handle to find
  * @return ThreadRegistryEntry* Pointer to the registry entry, or NULL if not found
  */
-ThreadRegistryEntry* thread_registry_find_by_handle(ThreadRegistry* registry, HANDLE handle);
+ThreadRegistryEntry* thread_registry_find_by_handle(ThreadRegistry* registry, ThreadHandle_T handle);
 
 /**
  * @brief Check if a thread is registered

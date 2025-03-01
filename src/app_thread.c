@@ -37,7 +37,7 @@ bool app_thread_init(void) {
     return true;
 }
 
-bool app_thread_wait_all(DWORD timeout_ms) {
+bool app_thread_wait_all(uint32_t timeout_ms) {
     if (!g_registry_initialized) {
         fprintf(stderr, "Thread registry not initialized\n");
         return false;
@@ -46,7 +46,7 @@ bool app_thread_wait_all(DWORD timeout_ms) {
     platform_mutex_lock(&g_thread_registry.mutex);
     
     // Count active threads and collect handles
-    DWORD active_count = 0;
+    uint32_t active_count = 0;
     ThreadRegistryEntry* entry = g_thread_registry.head;
     while (entry != NULL) {
         if (entry->state != THREAD_STATE_TERMINATED) {
@@ -61,7 +61,7 @@ bool app_thread_wait_all(DWORD timeout_ms) {
     }
     
     // Allocate handles array
-    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    ThreadHandle_T* handles = (ThreadHandle_T*)malloc(active_count * sizeof(ThreadHandle_T));
     if (!handles) {
         platform_mutex_unlock(&g_thread_registry.mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
@@ -69,7 +69,7 @@ bool app_thread_wait_all(DWORD timeout_ms) {
     }
     
     // Collect handles
-    DWORD i = 0;
+    uint32_t i = 0;
     entry = g_thread_registry.head;
     while (entry != NULL && i < active_count) {
         if (entry->state != THREAD_STATE_TERMINATED) {
@@ -307,7 +307,7 @@ bool app_thread_create(AppThread_T* thread) {
     }
     
     // Create the thread
-    HANDLE thread_handle = NULL;
+    ThreadHandle_T thread_handle = NULL;
     if (platform_thread_create(&thread->thread_id, (ThreadFunc_T)app_thread_x, thread) != 0) {
         logger_log(LOG_ERROR, "Failed to create thread '%s'", thread->label);
         return false;
@@ -522,7 +522,7 @@ void wait_for_all_other_threads_to_complete(void) {
     }
     
     // Allocate handles array
-    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
+    ThreadHandle_T* handles = (ThreadHandle_T*)malloc(active_count * sizeof(ThreadHandle_T));
     if (!handles) {
         platform_mutex_unlock(&g_thread_registry.mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
