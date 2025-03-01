@@ -110,7 +110,7 @@ bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_la
     
     bool suppressed = false;
     char* saveptr = NULL;
-    char* token = strtok_s(list_copy, ",", &saveptr);
+    char* token = platform_strtok(list_copy, ",", &saveptr);
     
     while (token != NULL) {
         // Trim leading and trailing whitespace
@@ -126,7 +126,7 @@ bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_la
             break;
         }
         
-        token = strtok_s(NULL, ",", &saveptr);
+        token = platform_strtok(NULL, ",", &saveptr);
     }
     
     free(list_copy);
@@ -430,7 +430,7 @@ void check_for_suppression(void) {
     suppressed_list_copy[CONFIG_MAX_VALUE_LENGTH - 1] = '\0';
 
     char* context = NULL;
-    char* token = strtok_s(suppressed_list_copy, ",", &context);
+    char* token = platform_strtok(suppressed_list_copy, ",", &context);
 
     while (token != NULL) {
         for (int i = 0; i < NUM_THREADS; i++) {
@@ -438,7 +438,7 @@ void check_for_suppression(void) {
                 all_threads[i]->suppressed = true;
             }
         }
-        token = strtok_s(NULL, ",", &context);
+        token = platform_strtok(NULL, ",", &context);
     }
 }
 
@@ -488,7 +488,7 @@ void wait_for_all_other_threads_to_complete(void) {
     platform_mutex_lock(&g_thread_registry.mutex);
     
     // Count active threads and collect handles
-    DWORD active_count = 0;
+    uint32_t active_count = 0;
     ThreadRegistryEntry* entry = g_thread_registry.head;
     while (entry != NULL) {
         if (entry->state != THREAD_STATE_TERMINATED && 
@@ -513,7 +513,7 @@ void wait_for_all_other_threads_to_complete(void) {
     }
     
     // Collect handles
-    DWORD i = 0;
+    uint32_t i = 0;
     entry = g_thread_registry.head;
     while (entry != NULL && i < active_count) {
         if (entry->state != THREAD_STATE_TERMINATED && 

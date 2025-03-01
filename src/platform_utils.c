@@ -35,7 +35,7 @@
 
 // extern CRITICAL_SECTION rand_mutex;
 
-void get_high_resolution_timestamp(LARGE_INTEGER *timestamp) {
+void get_high_resolution_timestamp(PlatformHighResTimestamp_T *timestamp) {
     QueryPerformanceCounter(timestamp);
 }
 
@@ -344,7 +344,14 @@ char* platform_get_error_message(char* buffer, size_t buffer_size) {
     return buffer;
 }
 
-// Add this implementation
+// And then in platform_utils.c, implement it:
+char* platform_strtok(char* str, const char* delimiters, char** saveptr) {
+#ifdef _WIN32
+    return strtok_s(str, delimiters, saveptr);
+#else
+    return strtok_r(str, delimiters, saveptr);
+#endif
+}
 
 #ifdef _WIN32
 // Windows implementation

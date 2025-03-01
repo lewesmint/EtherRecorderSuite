@@ -175,7 +175,7 @@ uint32_t platform_random();
 uint32_t platform_random_range(uint32_t min, uint32_t max);
 
 char* get_cwd(char* buffer, int max_length);
-void get_high_resolution_timestamp(LARGE_INTEGER* timestamp);
+void get_high_resolution_timestamp(PlatformHighResTimestamp_T* timestamp);
 
 /**
  * @brief Function type for shutdown callbacks
@@ -190,6 +190,15 @@ typedef void (*ShutdownCallback_T)(void);
  * @return bool true on success, false on failure
  */
 bool platform_register_shutdown_handler(ShutdownCallback_T callback);
+
+/**
+ * @brief Thread-safe string tokenization function
+ * @param str String to tokenize (NULL to continue tokenizing previous string)
+ * @param delimiters String containing delimiter characters
+ * @param saveptr Pointer used to store state between calls
+ * @return Pointer to next token or NULL if no more tokens
+ */
+char* platform_strtok(char* str, const char* delimiters, char** saveptr);
 
 #ifdef __cplusplus
 }
