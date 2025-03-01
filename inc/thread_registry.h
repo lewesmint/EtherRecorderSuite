@@ -9,6 +9,7 @@
 
 #include "app_thread.h"
 #include "platform_mutex.h"
+#include "platform_defs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,7 +32,7 @@ typedef enum ThreadState {
 typedef struct ThreadRegistryEntry {
     AppThread_T* thread;                // Pointer to thread structure
     ThreadState state;                  // Current thread state
-    HANDLE handle;                      // Thread handle
+    ThreadHandle_T handle;              // Changed from HANDLE to ThreadHandle_T
     bool auto_cleanup;                  // Whether to automatically clean up thread resources
     struct ThreadRegistryEntry* next;   // Pointer to next entry in the linked list
 } ThreadRegistryEntry;
