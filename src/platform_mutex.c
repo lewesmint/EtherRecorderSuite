@@ -1,9 +1,12 @@
 #include "platform_mutex.h"
+#include "platform_atomic.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <time.h>
+#include <errno.h>
 #endif
 
 /*
@@ -12,22 +15,18 @@
 
 #ifdef _WIN32
 /*
- * Detect MSVC via _MSC_VER. Even if MSVC sets __STDC_VERSION__ to 201112L,
- * it may not correctly handle _Static_assert(cond, "string") in C mode.
- * We'll fallback to a negative array-size trick to force a compile-time error
- * if the condition is false.
+ * Detect MSVC via _MSC_VER.
  */
 #if defined(_MSC_VER)
     #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond) ? 1 : -1]
 #elif defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
     #define STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else // Fallback to negative array-size trick
+#else
     #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond) ? 1 : -1]
-#endif // _MSC_VER
+#endif
 
 /*
- * Ensure the fixed-size buffers in platform_mutex.h are big enough to hold
- * CRITICAL_SECTION and CONDITION_VARIABLE.
+ * Ensure storage sizes are adequate
  */
 STATIC_ASSERT(sizeof(CRITICAL_SECTION) <= PLATFORM_MUTEX_STORAGE_SIZE,
               CRITICAL_SECTION_storage_size_too_small);
@@ -35,7 +34,7 @@ STATIC_ASSERT(sizeof(CONDITION_VARIABLE) <= PLATFORM_COND_STORAGE_SIZE,
               CONDITION_VARIABLE_storage_size_too_small);
 
 /*
- * Helper functions to obtain pointers to the underlying Windows objects.
+ * Helper functions
  */
 static CRITICAL_SECTION *win_mutex(PlatformMutex_T *mutex) {
     return (CRITICAL_SECTION *)mutex->opaque;
@@ -45,6 +44,7 @@ static CONDITION_VARIABLE *win_cond(PlatformCondition_T *cond) {
     return (CONDITION_VARIABLE *)cond->opaque;
 }
 
+/* Windows implementation functions */
 int platform_mutex_init(PlatformMutex_T *mutex) {
     if (!mutex)
         return -1;
@@ -95,6 +95,27 @@ int platform_cond_signal(PlatformCondition_T *cond) {
         return -1;
     WakeConditionVariable(win_cond(cond));
     return 0;
+}
+
+int platform_cond_broadcast(PlatformCondition_T *cond) {
+    if (!cond)
+        return -1;
+    WakeAllConditionVariable(win_cond(cond));
+    return 0;
+}
+
+int platform_cond_timedwait(PlatformCondition_T *cond, PlatformMutex_T *mutex, uint32_t timeout_ms) {
+    if (!cond || !mutex)
+        return PLATFORM_WAIT_ERROR;
+    
+    BOOL result = SleepConditionVariableCS(win_cond(cond), win_mutex(mutex), timeout_ms);
+    if (result) {
+        return PLATFORM_WAIT_SUCCESS;
+    } else if (GetLastError() == ERROR_TIMEOUT) {
+        return PLATFORM_WAIT_TIMEOUT;
+    } else {
+        return PLATFORM_WAIT_ERROR;
+    }
 }
 
 int platform_cond_destroy(PlatformCondition_T *cond) {
@@ -313,13 +334,46 @@ int platform_cond_signal(PlatformCondition_T *cond) {
     return pthread_cond_signal(posix_cond(cond));
 }
 
+int platform_cond_broadcast(PlatformCondition_T *cond) {
+    if (!cond)
+        return -1;
+    return pthread_cond_broadcast(posix_cond(cond));
+}
+
+int platform_cond_timedwait(PlatformCondition_T *cond, PlatformMutex_T *mutex, uint32_t timeout_ms) {
+    if (!cond || !mutex)
+        return PLATFORM_WAIT_ERROR;
+    
+    struct timespec ts;
+    if (timeout_ms != PLATFORM_WAIT_INFINITE) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        // Handle nanosecond overflow
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000;
+        }
+        
+        int result = pthread_cond_timedwait(posix_cond(cond), posix_mutex(mutex), &ts);
+        if (result == 0) {
+            return PLATFORM_WAIT_SUCCESS;
+        } else if (result == ETIMEDOUT) {
+            return PLATFORM_WAIT_TIMEOUT;
+        } else {
+            return PLATFORM_WAIT_ERROR;
+        }
+    } else {
+        int result = pthread_cond_wait(posix_cond(cond), posix_mutex(mutex));
+        return (result == 0) ? PLATFORM_WAIT_SUCCESS : PLATFORM_WAIT_ERROR;
+    }
+}
+
 int platform_cond_destroy(PlatformCondition_T *cond) {
     if (!cond)
         return -1;
     return pthread_cond_destroy(posix_cond(cond));
 }
-
-// Add these event function implementations
 
 bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initial_state) {
     if (!event) {

@@ -107,12 +107,32 @@ int platform_cond_init(PlatformCondition_T *cond);
 int platform_cond_wait(PlatformCondition_T *cond, PlatformMutex_T *mutex);
 
 /**
+* @brief Waits on the condition variable using the given mutex with a timeout.
+*
+* @param cond Pointer to the condition variable.
+* @param mutex Pointer to the mutex.
+* @param timeout_ms Maximum time to wait in milliseconds (PLATFORM_WAIT_INFINITE for no timeout)
+* @return int PLATFORM_WAIT_SUCCESS on success, 
+*             PLATFORM_WAIT_TIMEOUT on timeout,
+*             PLATFORM_WAIT_ERROR on error
+*/
+int platform_cond_timedwait(PlatformCondition_T *cond, PlatformMutex_T *mutex, uint32_t timeout_ms);
+
+/**
 * @brief Signals the given condition variable.
 *
 * @param cond Pointer to the condition variable.
 * @return int 0 on success, -1 on failure.
 */
 int platform_cond_signal(PlatformCondition_T *cond);
+
+/**
+* @brief Broadcasts to all threads waiting on the given condition variable.
+*
+* @param cond Pointer to the condition variable.
+* @return int 0 on success, -1 on failure.
+*/
+int platform_cond_broadcast(PlatformCondition_T *cond);
 
 /**
 * @brief Destroys the given condition variable.
