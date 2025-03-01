@@ -49,7 +49,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
             get_socket_error_message(error_buffer, sizeof(error_buffer));
             logger_log(LOG_ERROR, "Socket setup failed: %s. Retrying in %d seconds...", error_buffer, backoff);
             
-            sleep(backoff);
+            sleep_seconds(backoff);
             backoff = (backoff < backoff_max) ? backoff * 2 : backoff_max;
             continue;
         }
@@ -67,7 +67,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
                 if (sock != INVALID_SOCKET) {
                     close_socket(&sock);
                 }
-                sleep(backoff);
+                sleep_seconds(backoff);
                 backoff = (backoff < backoff_max) ? backoff * 2 : backoff_max;
                 continue;
             }
