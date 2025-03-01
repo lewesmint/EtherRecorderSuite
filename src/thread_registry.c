@@ -24,7 +24,7 @@ bool thread_registry_init(ThreadRegistry* registry) {
     return true;
 }
 
-bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, HANDLE handle, bool auto_cleanup) {
+bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, ThreadHandle_T handle, bool auto_cleanup) {
     if (!registry || !thread || handle == NULL) {
         return false;
     }
@@ -165,7 +165,7 @@ ThreadRegistryEntry* thread_registry_find_by_label(ThreadRegistry* registry, con
     return result;
 }
 
-ThreadRegistryEntry* thread_registry_find_by_handle(ThreadRegistry* registry, HANDLE handle) {
+ThreadRegistryEntry* thread_registry_find_by_handle(ThreadRegistry* registry, ThreadHandle_T handle) {
     if (!registry || handle == NULL) {
         return NULL;
     }
