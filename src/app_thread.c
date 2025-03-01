@@ -81,16 +81,18 @@ bool app_thread_wait_all(uint32_t timeout_ms) {
     platform_mutex_unlock(&g_thread_registry.mutex);
     
     // Wait for all threads
-    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
+    int result = platform_thread_wait_multiple(handles, active_count, true, timeout_ms);
     free(handles);
     
-    if (result == WAIT_OBJECT_0) {
+    if (result == PLATFORM_WAIT_SUCCESS) {
         return true;
-    } else if (result == WAIT_TIMEOUT) {
+    } else if (result == PLATFORM_WAIT_TIMEOUT) {
         logger_log(LOG_WARN, "Timeout waiting for threads to complete");
         return false;
     } else {
-        logger_log(LOG_ERROR, "Error waiting for threads to complete: %lu", GetLastError());
+        char error_buf[256];
+        platform_get_error_message(error_buf, sizeof(error_buf));
+        logger_log(LOG_ERROR, "Error waiting for threads to complete: %s", error_buf);
         return false;
     }
 }
@@ -153,8 +155,9 @@ extern AppThread_T server_receive_thread;
 extern AppThread_T client_send_thread;
 extern AppThread_T client_receive_thread;
 
-static CONDITION_VARIABLE logger_thread_condition;
-static CRITICAL_SECTION logger_thread_mutex_in_app_thread;
+// Replace these Windows-specific declarations:
+static PlatformCondition_T logger_thread_condition;
+static PlatformMutex_T logger_thread_mutex;
 volatile bool logger_ready = false;
 
 typedef enum WaitResult {
@@ -215,44 +218,21 @@ void* exit_stub(void* arg) {
     return 0;
 }
 
+// Replace the wait_for_condition_with_timeout function:
 int wait_for_condition_with_timeout(void* condition, void* mutex, int timeout_ms) {
-#ifdef _WIN32
-    if (!SleepConditionVariableCS((PCONDITION_VARIABLE)condition, (PCRITICAL_SECTION)mutex, timeout_ms)) {
-        DWORD error = GetLastError();
-        if (error == ERROR_TIMEOUT) {
-            return APP_WAIT_TIMEOUT;
-        } else {
-            char* errorMsg = NULL;
-            FormatMessageA(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                (LPSTR)&errorMsg, 0, NULL);
-            LocalFree(errorMsg);
-            return APP_WAIT_ERROR;
-        }
+    // Replace Windows-specific implementation with platform-agnostic version
+    int result = platform_cond_timedwait((PlatformCondition_T*)condition, 
+                                         (PlatformMutex_T*)mutex, 
+                                         (uint32_t)timeout_ms);
+                                         
+    // Map platform wait result codes to app wait result codes
+    if (result == PLATFORM_WAIT_SUCCESS) {
+        return APP_WAIT_SUCCESS;
+    } else if (result == PLATFORM_WAIT_TIMEOUT) {
+        return APP_WAIT_TIMEOUT;
+    } else {
+        return APP_WAIT_ERROR;
     }
-    return APP_WAIT_SUCCESS;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += timeout_ms / 1000;
-    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
-    if (ts.tv_nsec >= 1000000000) {
-        ts.tv_sec++;
-        ts.tv_nsec -= 1000000000;
-    }
-
-    int rc = pthread_cond_timedwait((pthread_cond_t*)condition, (pthread_mutex_t*)mutex, &ts);
-    if (rc == ETIMEDOUT) {
-        printf("Timeout occurred while waiting for condition variable\n");
-        return WAIT_TIMEOUT;
-    }
-    if (rc != 0) {
-        printf("Error occurred while waiting for condition variable: %s\n", strerror(rc));
-        return WAIT_ERROR;
-    }
-    return WAIT_SUCCESS;
-#endif
 }
 
 void* init_wait_for_logger(void* arg) {
@@ -260,18 +240,18 @@ void* init_wait_for_logger(void* arg) {
     set_thread_label(thread_info->label);
     init_thread_timestamp_system();
 
-    EnterCriticalSection(&logger_thread_mutex_in_app_thread);
+    platform_mutex_lock(&logger_thread_mutex);
     while (!logger_ready) {
-        int result = wait_for_condition_with_timeout(&logger_thread_condition, &logger_thread_mutex_in_app_thread, 5000);
+        int result = wait_for_condition_with_timeout(&logger_thread_condition, &logger_thread_mutex, 5000);
         if (result == APP_WAIT_TIMEOUT) {
-            LeaveCriticalSection(&logger_thread_mutex_in_app_thread);
+            platform_mutex_unlock(&logger_thread_mutex);
             return (void*)APP_WAIT_TIMEOUT;
         } else if (result == APP_WAIT_ERROR) {
-            LeaveCriticalSection(&logger_thread_mutex_in_app_thread);
+            platform_mutex_unlock(&logger_thread_mutex);
             return (void*)APP_WAIT_ERROR;
         }
     }
-    LeaveCriticalSection(&logger_thread_mutex_in_app_thread);
+    platform_mutex_unlock(&logger_thread_mutex);
     set_thread_log_file_from_config(thread_info->label);
     logger_log(LOG_INFO, "Thread %s initialised", thread_info->label);
     logger_log(LOG_INFO, "Logger thread initialised");
@@ -333,15 +313,16 @@ bool app_thread_create(AppThread_T* thread) {
 }
 
 
+// Update logger_thread_function:
 void* logger_thread_function(void* arg) {
     AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     logger_log(LOG_INFO, "Logger thread started");
 
-    EnterCriticalSection(&logger_thread_mutex_in_app_thread);
+    platform_mutex_lock(&logger_thread_mutex);
     logger_ready = true;
-    WakeAllConditionVariable(&logger_thread_condition);
-    LeaveCriticalSection(&logger_thread_mutex_in_app_thread);
+    platform_cond_broadcast(&logger_thread_condition);
+    platform_mutex_unlock(&logger_thread_mutex);
 
     LogEntry_T entry;
     bool running = true;
@@ -461,9 +442,10 @@ void check_for_suppression(void) {
     }
 }
 
+// Update start_threads:
 void start_threads(void) {
-    InitializeConditionVariable(&logger_thread_condition);
-    InitializeCriticalSection(&logger_thread_mutex_in_app_thread);
+    platform_cond_init(&logger_thread_condition);
+    platform_mutex_init(&logger_thread_mutex);
     
     // Initialize thread registry
     if (!app_thread_init()) {
@@ -497,6 +479,7 @@ bool wait_for_all_threads_to_complete(int time_ms) {
     return app_thread_wait_all(time_ms);
 }
 
+// Update wait_for_all_other_threads_to_complete:
 void wait_for_all_other_threads_to_complete(void) {
     // Get the current thread label
     const char* current_thread_label = get_thread_label();
@@ -544,7 +527,7 @@ void wait_for_all_other_threads_to_complete(void) {
     platform_mutex_unlock(&g_thread_registry.mutex);
     
     // Wait for all other threads
-    WaitForMultipleObjects(active_count, handles, TRUE, INFINITE);
+    platform_thread_wait_multiple(handles, active_count, true, PLATFORM_WAIT_INFINITE);
     free(handles);
     
     logger_log(LOG_INFO, "Thread '%s' has seen all other threads complete", current_thread_label);
