@@ -11,4 +11,17 @@
 #define PLATFORM_WAIT_ERROR -1
 #define PLATFORM_WAIT_INFINITE ((uint32_t)-1)
 
+// Platform-agnostic handle types
+#ifdef _WIN32
+    #include <windows.h>
+    typedef HANDLE PlatformHandle_T;
+    typedef HANDLE ThreadHandle_T;
+    typedef DWORD ThreadId_T;
+#else
+    #include <pthread.h>
+    typedef intptr_t PlatformHandle_T;
+    typedef pthread_t ThreadHandle_T;
+    typedef pthread_t ThreadId_T;
+#endif
+
 #endif // PLATFORM_DEFS_H
