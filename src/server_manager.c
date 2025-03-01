@@ -7,6 +7,8 @@
 #include "app_thread.h"
 #include "logger.h"
 #include "platform_utils.h"
+#include "platform_threads.h"
+#include "platform_atomic.h"
 #include "app_config.h"
 
 
@@ -41,13 +43,13 @@ AppThread_T server_receive_thread = {
 /**
  * Helper function to clean up thread handles
  */
-static void cleanup_thread_handles(HANDLE send_handle, HANDLE receive_handle) {
+static void cleanup_thread_handles(ThreadHandle_T send_handle, ThreadHandle_T receive_handle) {
     if (send_handle != NULL) {
-        platform_thread_close(send_handle);
+        platform_thread_close(&send_handle);
     }
     
     if (receive_handle != NULL) {
-        platform_thread_close(receive_handle);
+        platform_thread_close(&receive_handle);
     }
 }
 
@@ -61,13 +63,13 @@ static void cleanup_thread_handles(HANDLE send_handle, HANDLE receive_handle) {
  * @return true if threads completed, false if timeout
  */
 static bool wait_for_communication_threads(
-    HANDLE send_thread_id, 
-    HANDLE receive_thread_id, 
+    ThreadHandle_T send_thread_id, 
+    ThreadHandle_T receive_thread_id, 
     int timeout_ms,
-    volatile LONG* connection_closed) {
+    volatile long* connection_closed) {
     
-    HANDLE thread_handles[2];
-    DWORD handle_count = 0;
+    ThreadHandle_T thread_handles[2];
+    uint32_t handle_count = 0;
     
     if (send_thread_id != NULL) {
         thread_handles[handle_count++] = send_thread_id;
@@ -83,37 +85,39 @@ static bool wait_for_communication_threads(
 
     // Check if threads already completed
     if (handle_count == 1) {
-        DWORD result = WaitForSingleObject(thread_handles[0], 0);
-        if (result == WAIT_OBJECT_0) {
+        int result = platform_thread_wait_single(thread_handles[0], 0);
+        if (result == PLATFORM_WAIT_SUCCESS) {
             return true;
         }
     } else if (handle_count == 2) {
         // Check if both threads already completed
-        DWORD result1 = WaitForSingleObject(thread_handles[0], 0);
-        DWORD result2 = WaitForSingleObject(thread_handles[1], 0);
-        if (result1 == WAIT_OBJECT_0 && result2 == WAIT_OBJECT_0) {
+        int result1 = platform_thread_wait_single(thread_handles[0], 0);
+        int result2 = platform_thread_wait_single(thread_handles[1], 0);
+        if (result1 == PLATFORM_WAIT_SUCCESS && result2 == PLATFORM_WAIT_SUCCESS) {
             return true;
         }
     }
     
     // Wait for all threads with timeout
-    DWORD result = WaitForMultipleObjects(handle_count, thread_handles, TRUE, timeout_ms);
+    int result = platform_thread_wait_multiple(thread_handles, handle_count, true, timeout_ms);
     
-    if (result == WAIT_OBJECT_0) {
+    if (result == PLATFORM_WAIT_SUCCESS) {
         logger_log(LOG_DEBUG, "All communication threads completed normally");
         return true;
-    } else if (result == WAIT_TIMEOUT) {
+    } else if (result == PLATFORM_WAIT_TIMEOUT) {
         logger_log(LOG_WARN, "Timeout waiting for communication threads");
         
         // Check if connection was marked as closed by the threads
-        if (InterlockedCompareExchange(connection_closed, 0, 0) != 0) {
+        if (platform_atomic_compare_exchange(connection_closed, 0, 0) != 0) {
             logger_log(LOG_INFO, "Connection was closed by a thread, proceeding with cleanup");
             return true;
         }
         
         return false;
     } else {
-        logger_log(LOG_ERROR, "Error waiting for communication threads: %lu", GetLastError());
+        char error_buf[256];
+        platform_get_error_message(error_buf, sizeof(error_buf));
+        logger_log(LOG_ERROR, "Error waiting for communication threads: %s", error_buf);
         return true; // Return true to allow cleanup
     }
 }
@@ -123,7 +127,7 @@ static bool wait_for_communication_threads(
  * 
  * @param addr Pointer to socket address structure to populate
  * @param port Port number to listen on
- * @return SOCKET Valid socket or INVALID_SOCKET on failure
+ * @return Valid socket or INVALID_SOCKET on failure
  */
 static SOCKET setup_server_socket(struct sockaddr_in* addr, uint16_t port) {
     int backoff = 1;  // Start with a 1-second backoff
@@ -145,7 +149,7 @@ static SOCKET setup_server_socket(struct sockaddr_in* addr, uint16_t port) {
         logger_log(LOG_ERROR, "Server socket setup failed: %s. Retrying in %d seconds...", 
                   error_buffer, backoff);
         
-        sleep(backoff);
+        sleep_seconds(backoff);
         backoff = (backoff < backoff_max) ? backoff * 2 : backoff_max;
         
         retry_count++;
@@ -228,7 +232,7 @@ void* serverListenerThread(void* arg) {
         logger_log(LOG_INFO, "Client connected from %s:%d", client_ip, ntohs(client_addr.sin_port));
         
         // Create a flag for tracking connection state
-        volatile LONG connection_closed_flag = FALSE;
+        volatile long connection_closed_flag = 0;
         
         // Create communication thread group
         CommsThreadGroup comms_group;
