@@ -6,10 +6,11 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+#include <stdlib.h>  // Add this for strtoull
 
 #ifdef _WIN32
     #include <windows.h>
-    #include <direct.h>
+    #include <direct.h>  // Already included but needed for _fullpath
     #include <bcrypt.h>
     // #include <shlwapi.h>
     //// it is necessary to link with shlwapi.lib,
@@ -34,15 +35,15 @@
 
 // extern CRITICAL_SECTION rand_mutex;
 
-void get_high_resolution_timestamp(LARGE_INTEGER* timestamp) {
+void get_high_resolution_timestamp(LARGE_INTEGER *timestamp) {
     QueryPerformanceCounter(timestamp);
 }
 
-uint64_t platform_strtoull(const char* str, char** endptr, int base) {
+uint64_t platform_strtoull(const char *str, char **endptr, int base) {
     return strtoull(str, endptr, base);
 }
 
-void get_current_time(char* buffer, size_t buffer_size) {
+void get_current_time(char *buffer, size_t buffer_size) {
     time_t now = time(NULL);
     struct tm* t = localtime(&now);
 
@@ -54,20 +55,20 @@ void get_current_time(char* buffer, size_t buffer_size) {
     }
 }
 
-void init_mutex(PlatformMutex_T* mutex) {
-    platform_mutex_init(mutex);
+int init_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_init(mutex);
 }
 
-void lock_mutex(PlatformMutex_T* mutex) {
-    platform_mutex_lock(mutex);
+int lock_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_lock(mutex);
 }
 
-void unlock_mutex(PlatformMutex_T* mutex) {
-    platform_mutex_unlock(mutex);
+int unlock_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_unlock(mutex);
 }
 
 
-char* get_cwd(char* buffer, int max_length) {
+char* get_cwd(char *buffer, int max_length) {
 #ifdef _WIN32
     return _getcwd(buffer, max_length);
 #else
@@ -76,7 +77,7 @@ char* get_cwd(char* buffer, int max_length) {
 }
 
 
-void stream_print(FILE* stream, const char* format, ...) {
+void stream_print(FILE* stream, const char *format, ...) {
     char buffer[1024];
     va_list args;
     va_start(args, format);
@@ -195,7 +196,7 @@ void init_console(void) {
 
 bool resolve_full_path(const char* filename, char* full_path, size_t size) {
 #ifdef _WIN32
-    return (_fullpath(full_path, filename, size) != NULL);
+    return (_fullpath(full_path, filename, size) != NULL);  // Compare with NULL instead of integer
 #else
     return (realpath(filename, full_path) != NULL);
 #endif
@@ -206,8 +207,9 @@ bool resolve_full_path(const char* filename, char* full_path, size_t size) {
  */
 int str_cmp_nocase(const char *s1, const char *s2) {
     while (*s1 && *s2) {
-        char c1 = tolower((unsigned char)*s1);
-        char c2 = tolower((unsigned char)*s2);
+        // Cast to unsigned char before passing to tolower to avoid warnings
+        unsigned char c1 = (unsigned char)tolower((unsigned char)*s1);
+        unsigned char c2 = (unsigned char)tolower((unsigned char)*s2);
         
         if (c1 != c2) {
             return c1 - c2;
@@ -217,6 +219,7 @@ int str_cmp_nocase(const char *s1, const char *s2) {
         s2++;
     }
     
+    // Cast to unsigned char for the final comparison too
     return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
 }
 
@@ -272,3 +275,138 @@ uint32_t platform_random_range(uint32_t min, uint32_t max) {
     }
     return min + (platform_random() % (max - min + 1));
 }
+
+/**
+ * @brief Get the last error code from the system
+ * 
+ * @return int The error code
+ */
+int platform_get_last_error(void) {
+#ifdef _WIN32
+    return (int)GetLastError();
+#else
+    return errno;
+#endif
+}
+
+/**
+ * @brief Get the error message for the last system error
+ * 
+ * @param buffer Buffer to store the error message
+ * @param buffer_size Size of the buffer
+ * @return char* Pointer to the buffer containing the error message
+ */
+char* platform_get_error_message(char* buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) {
+        return NULL;
+    }
+    
+#ifdef _WIN32
+    DWORD error_code = GetLastError();
+    DWORD result = FormatMessageA(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        error_code,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        buffer,
+        (DWORD)buffer_size,
+        NULL);
+    
+    if (result == 0) {
+        snprintf(buffer, buffer_size, "Unknown error (code: %lu)", error_code);
+    } else {
+        // Remove trailing newline/carriage return if present
+        size_t len = strlen(buffer);
+        while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r')) {
+            buffer[--len] = '\0';
+        }
+    }
+#else
+    // Get the error code
+    int error_code = errno;
+    
+    // Use the thread-safe version of strerror
+    #if defined(_GNU_SOURCE)
+        // GNU version returns a char* and ignores the buffer
+        char* result = strerror_r(error_code, buffer, buffer_size);
+        if (result != buffer) {
+            strncpy(buffer, result, buffer_size - 1);
+            buffer[buffer_size - 1] = '\0';
+        }
+    #else
+        // POSIX version returns an int and uses the buffer
+        if (strerror_r(error_code, buffer, buffer_size) != 0) {
+            snprintf(buffer, buffer_size, "Unknown error (code: %d)", error_code);
+        }
+    #endif
+#endif
+
+    return buffer;
+}
+
+// Add this implementation
+
+#ifdef _WIN32
+// Windows implementation
+static ShutdownCallback_T g_shutdown_callback = NULL;
+
+static BOOL WINAPI platform_console_ctrl_handler(DWORD signal) {
+    if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
+        fprintf(stderr, "\nTermination signal detected. Initiating shutdown...\n");
+        if (g_shutdown_callback) {
+            g_shutdown_callback();
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+bool platform_register_shutdown_handler(ShutdownCallback_T callback) {
+    if (!callback) {
+        return false;
+    }
+
+    g_shutdown_callback = callback;
+    
+    if (!SetConsoleCtrlHandler(platform_console_ctrl_handler, TRUE)) {
+        return false;
+    }
+    
+    return true;
+}
+#else
+// POSIX implementation
+#include <signal.h>
+
+static ShutdownCallback_T g_shutdown_callback = NULL;
+
+static void platform_signal_handler(int sig) {
+    if (sig == SIGINT || sig == SIGTERM) {
+        fprintf(stderr, "\nSignal %d detected. Initiating shutdown...\n", sig);
+        if (g_shutdown_callback) {
+            g_shutdown_callback();
+        }
+    }
+}
+
+bool platform_register_shutdown_handler(ShutdownCallback_T callback) {
+    if (!callback) {
+        return false;
+    }
+
+    g_shutdown_callback = callback;
+    
+    struct sigaction sa;
+    sa.sa_handler = platform_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    
+    if (sigaction(SIGINT, &sa, NULL) != 0 || 
+        sigaction(SIGTERM, &sa, NULL) != 0) {
+        return false;
+    }
+    
+    return true;
+}
+#endif
+

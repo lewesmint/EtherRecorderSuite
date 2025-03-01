@@ -9,13 +9,13 @@
 #ifndef APP_THREAD_H
 #define APP_THREAD_H
 
-#include <winsock2.h>
 #include <stdbool.h>
 
 #include "platform_threads.h"
 #include "logger.h"
 #include "client_manager.h"
 
+#define MAX_THREADS 100
 
 /**
  * @brief Function pointer type for pre-create functions.
@@ -99,4 +99,12 @@ void create_app_thread(AppThread_T *thread);
 void app_thread_cleanup(void);
 
 void* app_thread_x(AppThread_T* thread_args);
+
+
+void* pre_create_stub(void* arg);
+void* post_create_stub(void* arg);
+void* init_stub(void* arg);
+void* exit_stub(void* arg);
+void* init_wait_for_logger(void* arg);
+bool shutdown_signalled(void);
 #endif // APP_THREAD_H

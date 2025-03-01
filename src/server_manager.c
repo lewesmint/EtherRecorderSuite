@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <ws2tcpip.h>  // For inet_ntop
 
 #include "common_socket.h"
 #include "app_thread.h"
@@ -10,13 +9,6 @@
 #include "platform_utils.h"
 #include "app_config.h"
 
-// External declarations for stub functions
-extern void* pre_create_stub(void* arg);
-extern void* post_create_stub(void* arg);
-extern void* init_stub(void* arg);
-extern void* exit_stub(void* arg);
-extern void* init_wait_for_logger(void* arg);
-extern bool shutdown_signalled(void);
 
 // Default configuration values
 #define DEFAULT_LISTEN_RETRY_LIMIT 10
@@ -27,7 +19,7 @@ extern bool shutdown_signalled(void);
 AppThread_T server_send_thread = {
     .suppressed = true,
     .label = "SERVER.SEND",
-    .func = send_thread,
+    .func = send_thread_function,
     .data = NULL,
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
@@ -38,7 +30,7 @@ AppThread_T server_send_thread = {
 AppThread_T server_receive_thread = {
     .suppressed = true,
     .label = "SERVER.RECEIVE",
-    .func = receive_thread,
+    .func = receive_thread_function,
     .data = NULL,
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
@@ -51,11 +43,11 @@ AppThread_T server_receive_thread = {
  */
 static void cleanup_thread_handles(HANDLE send_handle, HANDLE receive_handle) {
     if (send_handle != NULL) {
-        CloseHandle(send_handle);
+        platform_thread_close(send_handle);
     }
     
     if (receive_handle != NULL) {
-        CloseHandle(receive_handle);
+        platform_thread_close(receive_handle);
     }
 }
 
@@ -133,7 +125,7 @@ static bool wait_for_communication_threads(
  * @param port Port number to listen on
  * @return SOCKET Valid socket or INVALID_SOCKET on failure
  */
-static SOCKET setup_server_socket(struct sockaddr_in* addr, int port) {
+static SOCKET setup_server_socket(struct sockaddr_in* addr, uint16_t port) {
     int backoff = 1;  // Start with a 1-second backoff
     int backoff_max = get_config_int("network", "server.backoff_max_seconds", DEFAULT_LISTEN_BACKOFF_MAX_SECONDS);
     int retry_limit = get_config_int("network", "server.retry_limit", DEFAULT_LISTEN_RETRY_LIMIT);
@@ -173,7 +165,7 @@ void* serverListenerThread(void* arg) {
     set_thread_label(thread_info->label);
     
     // Load configuration
-    int port = get_config_int("network", "server.port", server_info->port);
+    uint16_t port = get_config_uint16("network", "server.port", server_info->port);
     bool is_tcp = get_config_bool("network", "server.is_tcp", server_info->is_tcp);
     int thread_wait_timeout = get_config_int("network", "server.thread_wait_timeout_ms", DEFAULT_THREAD_WAIT_TIMEOUT_MS);
     

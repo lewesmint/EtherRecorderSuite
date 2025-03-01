@@ -7,9 +7,10 @@
 #define PLATFORM_SOCKETS_H
 
 // Platform-independent socket definitions
+#include <stdbool.h>
 #ifdef _WIN32
     #include <winsock2.h>
-    //#include <ws2tcpip.h>
+    #include <ws2tcpip.h> // inet_ntop etc.
 #else // !_WIN32
     #include <sys/socket.h>
     #include <netinet/in.h>
@@ -100,6 +101,30 @@ int set_non_blocking_mode(SOCKET sock);
  * @return 0 on success, or -1 on error.
  */
 int restore_blocking_mode(SOCKET sock);
+
+/**
+ * @brief Closes a socket and sets it to INVALID_SOCKET.
+ * @param sock Pointer to the socket to close.
+ */
+void close_socket(SOCKET* sock);
+
+/**
+ * @brief Sets up a listening server socket.
+ * @param addr Address structure to fill.
+ * @param port Port to listen on.
+ * @return Socket handle or error code on failure.
+ */
+SOCKET setup_listening_server_socket(struct sockaddr_in* addr, uint16_t port);
+
+/**
+ * @brief Gets a string describing the last socket error.
+ * @return String containing the error message.
+ */
+const char* socket_error_string(void);
+
+SOCKET setup_socket(bool is_server, bool is_tcp, struct sockaddr_in *addr, struct sockaddr_in *client_addr, const char *host, uint16_t port);
+PlatformSocketError connect_with_timeout(SOCKET sock, struct sockaddr_in *server_addr, int timeout_seconds);
+
 
 #ifdef __cplusplus
 }

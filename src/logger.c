@@ -16,19 +16,19 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <math.h>
-#include <windows.h>
 
+#include "platform_time.h"
 #include "log_queue.h"
 #include "platform_threads.h"
 #include "platform_utils.h"
+#include "platform_atomic.h"
 #include "app_thread.h"
 #include "app_config.h"
 
 #define MAX_LOG_FAILURES 100 // Maximum number of log failures before exiting
-#define MAX_THREADS 100
 #define APP_LOG_FILE_INDEX 0
 
- /* ANSI colour codes (regular CMD on Windows supports limited colours) */
+/* ANSI colour codes (regular CMD on Windows supports limited colours) */
 #define ANSI_RESET      "\x1b[0m"
 #define ANSI_DEBUG      "\x1b[36m"  // Cyan
 #define ANSI_INFO       "\x1b[32m"  // Green
@@ -56,21 +56,15 @@ typedef enum LogTimestampGranularity {
     LOG_TS_SECOND      = 1           // 1/1
 } LogTimestampGranularity;
 
-
-
 #ifdef _DEBUG
 // only relevant in debug builds
 bool g_trace_all = false;
 #endif
 
-
 PlatformMutex_T logging_mutex; // Mutex for thread safety
 static ThreadLogFile thread_log_files[MAX_THREADS + 1]; // +1 for the main application log file
 
-// for high-resolution timestamps
-THREAD_LOCAL static ULARGE_INTEGER g_filetime_reference_ularge;
-THREAD_LOCAL static LARGE_INTEGER g_qpc_reference;
-THREAD_LOCAL static LARGE_INTEGER g_qpc_frequency;
+// Replace Windows-specific timestamp types with platform-agnostic ones
 THREAD_LOCAL static int g_timestamp_initialised = 0;
 
 static LogTimestampGranularity g_log_timestamp_granularity = LOG_TS_NANOSECOND;  // Default
@@ -90,8 +84,8 @@ static char log_file_path[MAX_PATH] = "";             // Log file path
 static char log_file_name[MAX_PATH] = "log_file.log"; // Log file name
 static off_t g_log_file_size = 10485760;                // Log file size before rotation
 
-// Thread-specific log file
-__declspec(thread) static char thread_log_file[MAX_PATH] = "";
+// Thread-specific log file - use platform-agnostic thread local storage
+THREAD_LOCAL static char thread_log_file[MAX_PATH] = "";
 
 static PlatformThread_T log_thread; // Logging thread
 static bool logging_thread_started = false; // indicate whether the logger thread has started
@@ -156,19 +150,10 @@ LogLevel log_level_from_string(const char* level_str, LogLevel default_level) {
 /**
  * @brief Initializes the high-resolution timer for the current thread.
  */
+// Function to initialize logger's timestamp system
 void init_thread_timestamp_system(void) {
-    /* Get the frequency once */
-    QueryPerformanceFrequency(&g_qpc_frequency);
-
-    /* Capture the high-resolution counter for baseline */
-    QueryPerformanceCounter(&g_qpc_reference);
-
-    /* Immediately capture the system time as FILETIME to sync with high-resolution timer */
-    FILETIME file_time;
-    GetSystemTimeAsFileTime(&file_time);
-    g_filetime_reference_ularge.LowPart = file_time.dwLowDateTime;
-    g_filetime_reference_ularge.HighPart = file_time.dwHighDateTime;
-
+    // Replace Windows-specific code with platform abstraction
+    platform_init_timestamp_system();
     g_timestamp_initialised = 1;
 }
 
@@ -214,54 +199,28 @@ static void publish_log_entry(const LogEntry_T* entry, FILE* log_output) {
         sleep(5);
     }
 
-    /*
-     * We assume the timestamp system is already initialised at application startup.
-     * Calculate the elapsed ticks since the QPC reference.
-     */
-    int64_t elapsed_ticks = entry->timestamp.QuadPart - g_qpc_reference.QuadPart;
-    int64_t elapsed_seconds = elapsed_ticks / g_qpc_frequency.QuadPart;
+    /* Calculate calendar time from high-resolution timestamp */
+    time_t rawtime;
+    int64_t nanoseconds;
+    platform_timestamp_to_calendar_time(&entry->timestamp, &rawtime, &nanoseconds);
 
-    /* Convert stored FILETIME reference to time_t (seconds since Unix epoch) */
-    time_t rawtime = (time_t)((g_filetime_reference_ularge.QuadPart / 10000000ULL) - 11644473600ULL);
-    rawtime += elapsed_seconds;
-
+    /* Format time using platform-independent function */
     struct tm timeinfo;
-    localtime_s(&timeinfo, &rawtime);
+    platform_localtime(&rawtime, &timeinfo);
 
-    int64_t nanoseconds = (elapsed_ticks % g_qpc_frequency.QuadPart) *
-        (1000000000 / g_qpc_frequency.QuadPart);
+    /* Calculate fractional part */
+    int64_t adjusted_time = nanoseconds / (1000000000 / g_log_timestamp_granularity);
 
-    /*
-     * We now assume that g_log_timestamp_granularity is a power of 10.
-     * For example, if g_log_timestamp_granularity is 1000000 (for microsecond precision),
-     * the divisor becomes 1000000000 / 1000000 = 1000.
-     */
-    int64_t divisor = 1000000000 / g_log_timestamp_granularity;
-    int64_t adjusted_time = nanoseconds / divisor;
-
-    /*
-     * Determine the field width to print the fractional part by taking
-     * the base-10 logarithm of g_log_timestamp_granularity.
-     * For instance, log10(1000000) yields 6.
-     */
+    /* Rest of the existing code remains the same */
     int fractional_width = (int)log10((double)g_log_timestamp_granularity);
-
-    /* Determine log index width (default: 12, or user-defined) */
     int index_width = (g_log_leading_zeros >= 0) ? g_log_leading_zeros : 12;
-
-    /* Get ANSI colour for the log level (only for console output) */
     const char* log_colour = (log_output == stderr) ? get_log_level_colour(entry->level) : "";
     const char* reset_colour = (log_output == stderr) ? "\x1b[0m" : "";
 
     char time_buffer[64];
     strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
 
-    /*
-     * Print the log entry.
-     * The index is printed with leading zeros using 'index_width'.
-     * The sub-second part is printed with a field width equal to 'fractional_width',
-     * ensuring that leading zeros are preserved.
-     */
+    /* Print the log entry */
     if (fractional_width > 0) {
         fprintf(log_output, "%0*llu %s.%0*lld %s%s%s: [%s] %s\n",
             index_width, entry->index,
@@ -291,11 +250,11 @@ static void publish_log_entry(const LogEntry_T* entry, FILE* log_output) {
  * @param log_file_path The log file path.
  * @param log_file_name The log file name.
  */
-static void construct_log_file_name(char *full_log_file_name, size_t size, const char *log_file_path, const char *log_file_name) {
-    if (strlen(log_file_path) > 0) {
-        snprintf(full_log_file_name, size, "%s%c%s", log_file_path, PATH_SEPARATOR, log_file_name);
+static void construct_log_file_name(char *full_log_file_name, size_t size, const char *path, const char *name) {
+    if (strlen(path) > 0) {
+        snprintf(full_log_file_name, size, "%s%c%s", path, PATH_SEPARATOR, name);
     } else {
-        strncpy(full_log_file_name, log_file_name, size - 1);
+        strncpy(full_log_file_name, name, size - 1);
         full_log_file_name[size - 1] = '\0';
     }
     sanitise_path(full_log_file_name);
@@ -388,14 +347,9 @@ const char* log_level_to_string(LogLevel level) {
 
 /**
  * @brief Opens the log file and manages the failure count.
- * 
- * @param log_file_full_name The full name of the log file.
- * @return false if the log file could not be opened, true if it was opened successfully.
- *         already open or opened successfully.
  */
-// static bool open_log_file(const char* log_file_full_name) {
-static bool open_log_file_if_needed(ThreadLogFile *thread_log_file) {
-    if (thread_log_file->log_fp != NULL) {
+static bool open_log_file_if_needed(ThreadLogFile *p_log_file) {
+    if (p_log_file->log_fp != NULL) {
         // its open already
         return true;
     }
@@ -406,7 +360,7 @@ static bool open_log_file_if_needed(ThreadLogFile *thread_log_file) {
     char directory_path[MAX_PATH];
 
     // Strip the directory path from the full file path
-    strip_directory_path(thread_log_file->log_file_name, directory_path, sizeof(directory_path));
+    strip_directory_path(p_log_file->log_file_name, directory_path, sizeof(directory_path));
     
     // Create the directories for the log file if they don't exist
     if (create_directories(directory_path) != 0) {
@@ -417,22 +371,22 @@ static bool open_log_file_if_needed(ThreadLogFile *thread_log_file) {
         }
     }
 
-	char* mode = "a"; // Append mode by default
-	if (g_purge_logs_on_restart) {
-		mode = "w"; // Overwrite mode if purge_logs_on_restart is true
-	}
-    thread_log_file->log_fp = fopen(thread_log_file->log_file_name, mode);
-    if (thread_log_file->log_fp == NULL) {
+    char* mode = "a"; // Append mode by default
+    if (g_purge_logs_on_restart) {
+        mode = "w"; // Overwrite mode if purge_logs_on_restart is true
+    }
+    p_log_file->log_fp = fopen(p_log_file->log_file_name, mode);
+    if (p_log_file->log_fp == NULL) {
         if (log_failure_count == 0) {
             char error_message[LOG_MSG_BUFFER_SIZE];
-            snprintf(error_message, sizeof(error_message), "Failed to open log file: %s\n", thread_log_file->log_file_name);
+            snprintf(error_message, sizeof(error_message), "Failed to open log file: %s\n", p_log_file->log_file_name);
             fputs(error_message, stderr);
         }
 
         log_failure_count++;
         if (log_failure_count >= MAX_LOG_FAILURES) {
             char error_message[LOG_MSG_BUFFER_SIZE];
-            snprintf(error_message, sizeof(error_message), "Unrecoverable failure to open log file: %s\n. Exiting\n", thread_log_file->log_file_name);
+            snprintf(error_message, sizeof(error_message), "Unrecoverable failure to open log file: %s\n. Exiting\n", p_log_file->log_file_name);
             fputs(error_message, stderr);
             exit(EXIT_FAILURE); // Exit if logging is impossible over 100 iterations
         }
@@ -446,17 +400,17 @@ static bool open_log_file_if_needed(ThreadLogFile *thread_log_file) {
 /**
  * @brief Rotates the log file if it exceeds the configured size.
  */
-static void rotate_log_file_if_needed(ThreadLogFile *thread_log_file) {
+static void rotate_log_file_if_needed(ThreadLogFile *p_log_file) {
     lock_mutex(&logging_mutex);
     struct stat st;
-    if (stat(thread_log_file->log_file_name, &st) == 0 && st.st_size >= g_log_file_size) {
-        fclose(thread_log_file->log_fp);
+    if (stat(p_log_file->log_file_name, &st) == 0 && st.st_size >= g_log_file_size) {
+        fclose(p_log_file->log_fp);
         char rotated_log_filename[512];
         generate_log_filename(rotated_log_filename, sizeof(rotated_log_filename));
         snprintf(rotated_log_filename + strlen(rotated_log_filename), sizeof(rotated_log_filename) - strlen(rotated_log_filename), ".old");
-        rename(thread_log_file->log_file_name, rotated_log_filename);
-        thread_log_file->log_fp = fopen(thread_log_file->log_file_name, "a");
-        if (thread_log_file->log_fp == NULL) {
+        rename(p_log_file->log_file_name, rotated_log_filename);
+        p_log_file->log_fp = fopen(p_log_file->log_file_name, "a");
+        if (p_log_file->log_fp == NULL) {
             unlock_mutex(&logging_mutex);
             return;
         }
@@ -555,19 +509,20 @@ void log_now(const LogEntry_T *entry) {
     log_immediately(entry);
 }
 
+// Update safe_increment_index to use platform abstraction
 unsigned long long safe_increment_index() {
-    static volatile LONG64 log_index = 0;
-    // Use InterlockedIncrement64 to safely increment log_index
-    return InterlockedIncrement64(&log_index);
+    static volatile uint64_t log_index = 0;
+    // Use platform-agnostic atomic increment
+    return platform_atomic_increment_u64(&log_index);
 }
-
 
 void create_log_entry(LogEntry_T* entry, LogLevel level, const char* message) {
     const char* this_thread_label = get_thread_label();
     const char* name = this_thread_label ? this_thread_label : "UNKNOWN";
 
     entry->index = safe_increment_index();
-    get_high_resolution_timestamp(&entry->timestamp); // Get the high-resolution timestamp
+    // Use platform-agnostic timestamp function
+    platform_get_high_res_timestamp(&entry->timestamp);
     entry->level = level;
     // Copy the thread label and message safely
     strncpy(entry->thread_label, name, sizeof(entry->thread_label) - 1);
@@ -726,4 +681,12 @@ void logger_close() {
         // Wait for logging thread to finish (it won't, so this is just for completeness)
         platform_thread_join(log_thread, NULL);
     }
+}
+
+LogLevel logger_get_level(void) {
+    return g_log_level;
+}
+
+const char* get_level_name(LogLevel level) {
+    return log_level_to_string(level);
 }

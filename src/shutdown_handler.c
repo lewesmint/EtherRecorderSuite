@@ -1,28 +1,23 @@
 #include "shutdown_handler.h"
 #include "logger.h"
+#include "platform_mutex.h"
+#include "platform_atomic.h"
+#include "platform_utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <windows.h>
 
 // Global shutdown flag (volatile for visibility across threads)
-static volatile LONG shutdown_flag = FALSE;
+static volatile long shutdown_flag = 0;
 
-// Global shutdown event handle.
-static HANDLE shutdown_event = NULL;
+// Global shutdown event
+static PlatformEvent_T shutdown_event;
 
 /**
- * @brief Windows console control handler.
- * 
- * This is called when a console event (e.g., Ctrl-C) occurs.
+ * @brief Callback function for when termination signal is received
  */
-BOOL WINAPI console_ctrl_handler(DWORD signal) {
-    if (signal == CTRL_C_EVENT) {
-        fprintf(stderr, "\nCTRL-C detected. Initiating shutdown...\n");
-        signal_shutdown();
-        return TRUE;
-    }
-    return FALSE;
+static void shutdown_callback(void) {
+    signal_shutdown();
 }
 
 /**
@@ -30,19 +25,18 @@ BOOL WINAPI console_ctrl_handler(DWORD signal) {
  */
 bool install_shutdown_handler(void) {
     // Create a manual-reset event (not signaled initially)
-    shutdown_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    if (shutdown_event == NULL) {
-        logger_log(LOG_ERROR, "CreateEvent failed (%lu)", GetLastError());
+    if (!platform_event_create(&shutdown_event, true, false)) {
+        logger_log(LOG_ERROR, "Failed to create shutdown event");
         return false;
     }
 
-    // Register the Ctrl-C console handler
-    if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
-        logger_log(LOG_ERROR, "Could not set control handler");
-        CloseHandle(shutdown_event);
-        shutdown_event = NULL;
+    // Register platform-agnostic signal handlers
+    if (!platform_register_shutdown_handler(shutdown_callback)) {
+        logger_log(LOG_ERROR, "Failed to register shutdown handler");
+        platform_event_destroy(&shutdown_event);
         return false;
     }
+
     return true;
 }
 
@@ -50,41 +44,31 @@ bool install_shutdown_handler(void) {
  * @brief Signals that a shutdown should begin.
  */
 void signal_shutdown(void) {
-    InterlockedExchange(&shutdown_flag, TRUE);
-    if (shutdown_event) {
-        SetEvent(shutdown_event);
-    }
+    platform_atomic_exchange((volatile long*)&shutdown_flag, 1);
+    platform_event_set(&shutdown_event);
 }
 
 /**
  * @brief Checks if a shutdown has been signaled.
  */
 bool shutdown_signalled(void) {
-    return InterlockedCompareExchange(&shutdown_flag, FALSE, FALSE);
+    return platform_atomic_compare_exchange((volatile long*)&shutdown_flag, 0, 0) != 0;
 }
 
 /**
  * @brief Waits for the shutdown signal.
  */
 bool wait_for_shutdown_event(int timeout_ms) {
-    // Note: INFINITE (-1) is a valid timeout value.
-    DWORD result = WaitForSingleObject(shutdown_event, timeout_ms);
+    int result = platform_event_wait(&shutdown_event, timeout_ms);
     
-    if (result == WAIT_OBJECT_0) {
+    if (result == PLATFORM_WAIT_SUCCESS) {
         return true;
     }
-    else if (result == WAIT_TIMEOUT) {
+    else if (result == PLATFORM_WAIT_TIMEOUT) {
         logger_log(LOG_DEBUG, "Wait for shutdown timed out (%d ms)", timeout_ms);
     }
-    else if (result == WAIT_ABANDONED) {
-        logger_log(LOG_ERROR, "Wait for shutdown was abandoned (possible mutex issue).");
-    }
-    else if (result == WAIT_FAILED) {
-        DWORD error_code = GetLastError();
-        logger_log(LOG_ERROR, "Wait for shutdown failed with error code %lu", error_code);
-    }
     else {
-        logger_log(LOG_ERROR, "Wait for shutdown failed due to an unknown reason.");
+        logger_log(LOG_ERROR, "Wait for shutdown failed");
     }
     
     return false;
@@ -94,8 +78,5 @@ bool wait_for_shutdown_event(int timeout_ms) {
  * @brief Cleans up the shutdown event.
  */
 void cleanup_shutdown_handler(void) {
-    if (shutdown_event) {
-        CloseHandle(shutdown_event);
-        shutdown_event = NULL;
-    }
+    platform_event_destroy(&shutdown_event);
 }

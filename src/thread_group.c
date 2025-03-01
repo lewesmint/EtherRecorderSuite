@@ -3,20 +3,13 @@
  * @brief Implementation of thread group management.
  */
 #include "thread_group.h"
+
 #include <string.h>
+
 #include "logger.h"
 #include "app_thread.h"
-
-
-
-// External declarations for stub functions
-extern void* pre_create_stub(void* arg);
-extern void* post_create_stub(void* arg);
-extern void* init_stub(void* arg);
-extern void* exit_stub(void* arg);
-extern void* init_wait_for_logger(void* arg);
-extern bool shutdown_signalled(void);
-
+#include "platform_threads.h"
+#include "platform_utils.h"
 
 bool thread_group_init(ThreadGroup* group, const char* name) {
     if (!group || !name) {
@@ -74,7 +67,7 @@ bool thread_group_add(ThreadGroup* group, AppThread_T* thread) {
     return true;
 }
 
-bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
+bool thread_group_terminate_all(ThreadGroup* group, uint32_t timeout_ms) {
     if (!group) {
         return false;
     }
@@ -82,7 +75,7 @@ bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
     platform_mutex_lock(&group->registry.mutex);
     
     ThreadRegistryEntry* entry = group->registry.head;
-    DWORD active_count = 0;
+    uint32_t active_count = 0;
     
     while (entry != NULL) {
         if (entry->state != THREAD_STATE_TERMINATED) {
@@ -99,18 +92,18 @@ bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
     }
     
     // Collect handles for active threads
-    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
-    if (!handles) {
+    PlatformThread_T* threads = (PlatformThread_T*)malloc(active_count * sizeof(PlatformThread_T));
+    if (!threads) {
         platform_mutex_unlock(&group->registry.mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
         return false;
     }
     
-    DWORD i = 0;
+    uint32_t i = 0;
     entry = group->registry.head;
     while (entry != NULL && i < active_count) {
         if (entry->state == THREAD_STATE_STOPPING) {
-            handles[i++] = entry->handle;
+            threads[i++] = entry->handle;
         }
         entry = entry->next;
     }
@@ -118,10 +111,10 @@ bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
     platform_mutex_unlock(&group->registry.mutex);
     
     // Wait for all threads to terminate
-    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
-    free(handles);
+    int result = platform_thread_wait_multiple(threads, active_count, true, timeout_ms);
+    free(threads);
     
-    if (result == WAIT_OBJECT_0) {
+    if (result == PLATFORM_WAIT_SUCCESS) {
         // Update all thread states to terminated
         platform_mutex_lock(&group->registry.mutex);
         entry = group->registry.head;
@@ -135,23 +128,26 @@ bool thread_group_terminate_all(ThreadGroup* group, DWORD timeout_ms) {
         
         logger_log(LOG_DEBUG, "All threads in group '%s' terminated", group->name);
         return true;
-    } else if (result == WAIT_TIMEOUT) {
+    } else if (result == PLATFORM_WAIT_TIMEOUT) {
         logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to terminate", group->name);
         return false;
     } else {
-        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to terminate: %lu", group->name, GetLastError());
+        char error_msg[256];
+        platform_get_error_message(error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to terminate: %s", 
+                   group->name, error_msg);
         return false;
     }
 }
 
-bool thread_group_wait_all(ThreadGroup* group, DWORD timeout_ms) {
+bool thread_group_wait_all(ThreadGroup* group, uint32_t timeout_ms) {
     if (!group) {
         return false;
     }
     
     platform_mutex_lock(&group->registry.mutex);
     
-    DWORD active_count = 0;
+    uint32_t active_count = 0;
     ThreadRegistryEntry* entry = group->registry.head;
     
     while (entry != NULL) {
@@ -167,19 +163,19 @@ bool thread_group_wait_all(ThreadGroup* group, DWORD timeout_ms) {
     }
     
     // Allocate handles array
-    HANDLE* handles = (HANDLE*)malloc(active_count * sizeof(HANDLE));
-    if (!handles) {
+    PlatformThread_T* threads = (PlatformThread_T*)malloc(active_count * sizeof(PlatformThread_T));
+    if (!threads) {
         platform_mutex_unlock(&group->registry.mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
         return false;
     }
     
     // Collect handles
-    DWORD i = 0;
+    uint32_t i = 0;
     entry = group->registry.head;
     while (entry != NULL && i < active_count) {
         if (entry->state != THREAD_STATE_TERMINATED) {
-            handles[i++] = entry->handle;
+            threads[i++] = entry->handle;
         }
         entry = entry->next;
     }
@@ -187,10 +183,10 @@ bool thread_group_wait_all(ThreadGroup* group, DWORD timeout_ms) {
     platform_mutex_unlock(&group->registry.mutex);
     
     // Wait for all threads
-    DWORD result = WaitForMultipleObjects(active_count, handles, TRUE, timeout_ms);
-    free(handles);
+    int result = platform_thread_wait_multiple(threads, active_count, true, timeout_ms);
+    free(threads);
     
-    if (result == WAIT_OBJECT_0) {
+    if (result == PLATFORM_WAIT_SUCCESS) {
         // Update thread states
         platform_mutex_lock(&group->registry.mutex);
         entry = group->registry.head;
@@ -204,13 +200,14 @@ bool thread_group_wait_all(ThreadGroup* group, DWORD timeout_ms) {
         
         logger_log(LOG_DEBUG, "All threads in group '%s' completed", group->name);
         return true;
-    } else if (result == WAIT_TIMEOUT) {
+    } else if (result == PLATFORM_WAIT_TIMEOUT) {
         logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to complete", group->name);
         return false;
     } else {
-        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to complete: %lu", group->name, GetLastError());
-
-        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to complete: %lu", group->name, GetLastError());
+        char error_msg[256];
+        platform_get_error_message(error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Error waiting for threads in group '%s' to complete: %s", 
+                   group->name, error_msg);
         return false;
     }
 }
@@ -229,12 +226,12 @@ bool thread_group_is_empty(ThreadGroup* group) {
     return is_empty;
 }
 
-DWORD thread_group_get_active_count(ThreadGroup* group) {
+uint32_t thread_group_get_active_count(ThreadGroup* group) {
     if (!group) {
         return 0;
     }
     
-    DWORD active_count = 0;
+    uint32_t active_count = 0;
     
     platform_mutex_lock(&group->registry.mutex);
     

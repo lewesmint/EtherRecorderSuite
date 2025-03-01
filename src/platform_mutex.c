@@ -102,6 +102,155 @@ int platform_cond_destroy(PlatformCondition_T *cond) {
     return (cond ? 0 : -1);
 }
 
+bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initial_state) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    *event = CreateEventA(NULL, manual_reset, initial_state, NULL);
+    if (*event == NULL) {
+        return false;
+    }
+#else
+    // Initialize mutex
+    pthread_mutexattr_t mutex_attr;
+    pthread_mutexattr_init(&mutex_attr);
+    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+    
+    if (pthread_mutex_init(&event->mutex, &mutex_attr) != 0) {
+        pthread_mutexattr_destroy(&mutex_attr);
+        return false;
+    }
+    
+    pthread_mutexattr_destroy(&mutex_attr);
+    
+    // Initialize condition variable
+    if (pthread_cond_init(&event->cond, NULL) != 0) {
+        pthread_mutex_destroy(&event->mutex);
+        return false;
+    }
+    
+    event->signaled = initial_state;
+    event->manual_reset = manual_reset;
+#endif
+    
+    return true;
+}
+
+void platform_event_destroy(PlatformEvent_T* event) {
+    if (!event) {
+        return;
+    }
+    
+#ifdef _WIN32
+    if (*event) {
+        CloseHandle(*event);
+        *event = NULL;
+    }
+#else
+    pthread_cond_destroy(&event->cond);
+    pthread_mutex_destroy(&event->mutex);
+#endif
+}
+
+bool platform_event_set(PlatformEvent_T* event) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return false;
+    }
+    
+    return SetEvent(*event) != 0;
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = true;
+    
+    if (event->manual_reset) {
+        pthread_cond_broadcast(&event->cond);
+    } else {
+        pthread_cond_signal(&event->cond);
+    }
+    
+    pthread_mutex_unlock(&event->mutex);
+    return true;
+#endif
+}
+
+bool platform_event_reset(PlatformEvent_T* event) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return false;
+    }
+    
+    return ResetEvent(*event) != 0;
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = false;
+    pthread_mutex_unlock(&event->mutex);
+    
+    return true;
+#endif
+}
+
+int platform_event_wait(PlatformEvent_T* event, uint32_t timeout_ms) {
+    if (!event) {
+        return PLATFORM_WAIT_ERROR;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return PLATFORM_WAIT_ERROR;
+    }
+    
+    DWORD result = WaitForSingleObject(*event, timeout_ms);
+    switch (result) {
+        case WAIT_OBJECT_0:
+            return PLATFORM_WAIT_SUCCESS;
+        case WAIT_TIMEOUT:
+            return PLATFORM_WAIT_TIMEOUT;
+        default:
+            return PLATFORM_WAIT_ERROR;
+    }
+#else
+    pthread_mutex_lock(&event->mutex);
+    
+    int result = PLATFORM_WAIT_ERROR;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+    
+    while (!event->signaled) {
+        if (timeout_ms == PLATFORM_WAIT_INFINITE) {
+            pthread_cond_wait(&event->cond, &event->mutex);
+        } else {
+            if (pthread_cond_timedwait(&event->cond, &event->mutex, &ts) == ETIMEDOUT) {
+                result = PLATFORM_WAIT_TIMEOUT;
+                break;
+            }
+        }
+    }
+    
+    if (event->signaled) {
+        if (!event->manual_reset) {
+            event->signaled = false;
+        }
+        result = PLATFORM_WAIT_SUCCESS;
+    }
+    
+    pthread_mutex_unlock(&event->mutex);
+    return result;
+#endif
+}
+
 #else // !_WIN32
 /* ---------------------- POSIX Implementation ---------------------- */
 
@@ -168,6 +317,157 @@ int platform_cond_destroy(PlatformCondition_T *cond) {
     if (!cond)
         return -1;
     return pthread_cond_destroy(posix_cond(cond));
+}
+
+// Add these event function implementations
+
+bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initial_state) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    *event = CreateEventA(NULL, manual_reset, initial_state, NULL);
+    if (*event == NULL) {
+        return false;
+    }
+#else
+    // Initialize mutex
+    pthread_mutexattr_t mutex_attr;
+    pthread_mutexattr_init(&mutex_attr);
+    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+    
+    if (pthread_mutex_init(&event->mutex, &mutex_attr) != 0) {
+        pthread_mutexattr_destroy(&mutex_attr);
+        return false;
+    }
+    
+    pthread_mutexattr_destroy(&mutex_attr);
+    
+    // Initialize condition variable
+    if (pthread_cond_init(&event->cond, NULL) != 0) {
+        pthread_mutex_destroy(&event->mutex);
+        return false;
+    }
+    
+    event->signaled = initial_state;
+    event->manual_reset = manual_reset;
+#endif
+    
+    return true;
+}
+
+void platform_event_destroy(PlatformEvent_T* event) {
+    if (!event) {
+        return;
+    }
+    
+#ifdef _WIN32
+    if (*event) {
+        CloseHandle(*event);
+        *event = NULL;
+    }
+#else
+    pthread_cond_destroy(&event->cond);
+    pthread_mutex_destroy(&event->mutex);
+#endif
+}
+
+bool platform_event_set(PlatformEvent_T* event) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return false;
+    }
+    
+    return SetEvent(*event) != 0;
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = true;
+    
+    if (event->manual_reset) {
+        pthread_cond_broadcast(&event->cond);
+    } else {
+        pthread_cond_signal(&event->cond);
+    }
+    
+    pthread_mutex_unlock(&event->mutex);
+    return true;
+#endif
+}
+
+bool platform_event_reset(PlatformEvent_T* event) {
+    if (!event) {
+        return false;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return false;
+    }
+    
+    return ResetEvent(*event) != 0;
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = false;
+    pthread_mutex_unlock(&event->mutex);
+    
+    return true;
+#endif
+}
+
+int platform_event_wait(PlatformEvent_T* event, uint32_t timeout_ms) {
+    if (!event) {
+        return PLATFORM_WAIT_ERROR;
+    }
+    
+#ifdef _WIN32
+    if (!*event) {
+        return PLATFORM_WAIT_ERROR;
+    }
+    
+    DWORD result = WaitForSingleObject(*event, timeout_ms);
+    switch (result) {
+        case WAIT_OBJECT_0:
+            return PLATFORM_WAIT_SUCCESS;
+        case WAIT_TIMEOUT:
+            return PLATFORM_WAIT_TIMEOUT;
+        default:
+            return PLATFORM_WAIT_ERROR;
+    }
+#else
+    pthread_mutex_lock(&event->mutex);
+    
+    int result = PLATFORM_WAIT_ERROR;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+    
+    while (!event->signaled) {
+        if (timeout_ms == PLATFORM_WAIT_INFINITE) {
+            pthread_cond_wait(&event->cond, &event->mutex);
+        } else {
+            if (pthread_cond_timedwait(&event->cond, &event->mutex, &ts) == ETIMEDOUT) {
+                result = PLATFORM_WAIT_TIMEOUT;
+                break;
+            }
+        }
+    }
+    
+    if (event->signaled) {
+        if (!event->manual_reset) {
+            event->signaled = false;
+        }
+        result = PLATFORM_WAIT_SUCCESS;
+    }
+    
+    pthread_mutex_unlock(&event->mutex);
+    return result;
+#endif
 }
 
 #endif // _WIN32

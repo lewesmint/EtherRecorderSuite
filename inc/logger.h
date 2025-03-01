@@ -5,11 +5,10 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
-#include <winsock2.h>
-#include <windows.h>
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "platform_time.h"
 
 
 #define LOG_MSG_BUFFER_SIZE 1024 // Buffer size for log messages
@@ -86,7 +85,7 @@ typedef enum LogOutput {
 typedef struct LogEntry_T {
     uint64_t index;
     LogLevel level;
-    LARGE_INTEGER timestamp; // Use LARGE_INTEGER for high-resolution timestamp
+    PlatformHighResTimestamp_T timestamp; // Use LARGE_INTEGER for high-resolution timestamp
     char message[LOG_MSG_BUFFER_SIZE];
     char thread_label[THREAD_LABEL_SIZE]; // Add thread label field
 } LogEntry_T;
@@ -124,5 +123,20 @@ void log_now(const LogEntry_T *entry);
  * @brief Closes the logger and releases any resources.
  */
 void logger_close(void);
+
+/**
+ * @brief Get the current log level.
+ * 
+ * @return The current log level.
+ */
+LogLevel logger_get_level(void);
+
+/**
+ * @brief Get the name of a log level.
+ * 
+ * @param level The log level to get the name of.
+ * @return The name of the log level as a string.
+ */
+const char* get_level_name(LogLevel level);
 
 #endif // LOGGER_H

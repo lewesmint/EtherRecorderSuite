@@ -1,10 +1,11 @@
 #ifndef COMM_THREADS_H
 #define COMM_THREADS_H
 
-#include "common_socket.h"
+// #include "common_socket.h"
 #include "app_thread.h"
 #include "message_queue.h"
 #include "thread_group.h"
+#include "platform_sockets.h"
 
 // Configuration constants with sensible defaults
 #define COMMS_BUFFER_SIZE         8192
@@ -49,7 +50,7 @@ typedef struct CommsThreadArgs_T {
     bool send_test_data;          // Send test data flag
     int send_interval_ms;         // Send interval in milliseconds
     char server_hostname[100];    // Server hostname or IP address
-    int port;                     // Port number
+    uint16_t port;                // Port number
     bool is_tcp;                  // Protocol is TCP (else UDP)
     
     // Relay configuration
@@ -69,7 +70,7 @@ typedef struct CommsThreadArgs_T {
  * @param arg Thread arguments (CommArgs_T*)
  * @return void* NULL
  */
-void* receive_thread(void* arg);
+void* receive_thread_function(void* arg);
 
 /**
  * @brief Thread function for sending data
@@ -80,7 +81,7 @@ void* receive_thread(void* arg);
  * @param arg Thread arguments (CommArgs_T*)
  * @return void* NULL
  */
-void* send_thread(void* arg);
+void* send_thread_function(void* arg);
 
 /**
  * @brief Initialize relay functionality

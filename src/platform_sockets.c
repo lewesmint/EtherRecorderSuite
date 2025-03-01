@@ -1,4 +1,3 @@
-
 /**
  * @file platform_sockets.c
  * @brief Platform-specific socket initialisation and cleanup functions.
@@ -7,12 +6,22 @@
 #include "platform_sockets.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
+#include <ws2tcpip.h>  // Add this for getaddrinfo and freeaddrinfo
 #else
 // #include <fcntl.h> // For fcntl on Unix
 #include <unistd.h>
+#include <netdb.h>     // Add this for getaddrinfo and freeaddrinfo
+#endif
+
+// Helper macro to safely convert error codes to SOCKET type
+#ifdef _WIN32
+#define SOCKET_ERROR_CODE(err) ((SOCKET)(err))
+#else
+#define SOCKET_ERROR_CODE(err) (err)
 #endif
 
 /**
@@ -29,6 +38,18 @@ void initialise_sockets(void) {
         exit(1);
     }
 #endif
+}
+
+/**
+ * Closes an individual socket and marks it as INVALID_SOCKET.
+ * This function does **not** call WSACleanup(), ensuring that Winsock
+ * is only cleaned up once when the application fully exits.
+ */
+void close_socket(SOCKET *sock) {
+    if (sock && *sock != INVALID_SOCKET) {
+        CLOSESOCKET(*sock);
+        *sock = INVALID_SOCKET;
+    }
 }
 
 /**
@@ -57,11 +78,6 @@ int platform_getsockopt(int sock, int level, int optname, void *optval, socklen_
     return getsockopt(sock, level, optname, optval, optlen);
 #endif
 }
-
-
-#include "platform_sockets.h"
-#include <stdio.h>
-#include <string.h>
 
 #ifdef _WIN32
     #define CLOSESOCKET closesocket
@@ -172,3 +188,183 @@ void get_socket_error_message(char* buffer, size_t buffer_size) {
         errsv, strerror(errsv));
 #endif
 }
+
+const char* socket_error_string(void) {
+#ifdef _WIN32
+    static char buffer[256] = {0};
+    int error_code = WSAGetLastError();
+    
+    if (FormatMessageA(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        error_code,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        buffer,
+        sizeof(buffer) - 1,
+        NULL) == 0) {
+        // FormatMessage failed
+        snprintf(buffer, sizeof(buffer) - 1, "Socket error %d", error_code);
+    }
+    
+    // Remove trailing newline/carriage return if present
+    char* end = buffer + strlen(buffer) - 1;
+    while (end >= buffer && (*end == '\n' || *end == '\r' || *end == '.')) {
+        *end-- = '\0';
+    }
+    
+    return buffer;
+#else
+    return strerror(errno);
+#endif
+}
+
+SOCKET setup_listening_server_socket(struct sockaddr_in* addr, uint16_t port) {
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_CREATE);
+    }
+
+    addr->sin_family = AF_INET;
+    addr->sin_port = htons(port);
+    
+    addr->sin_addr.s_addr = INADDR_ANY; // Bind to all available interfaces
+    if (bind(sock, (struct sockaddr*)addr, sizeof(*addr)) == SOCKET_ERROR) {
+        close_socket(&sock);
+        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_BIND);
+    }
+    if (listen(sock, SOMAXCONN) == SOCKET_ERROR) {
+        close_socket(&sock);
+        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_LISTEN);    
+    }
+    return sock;
+}
+
+/**
+ * Creates and sets up a socket (server or client).
+ * 
+ * @param is_server 1 if setting up a server, 0 if client.
+ * @param is_tcp 1 for TCP, 0 for UDP.
+ * @param addr Pointer to the socket address structure.
+ * @param client_addr Pointer to the client address structure (for UDP).
+ * @param ip_addr IP address to bind to (for client mode).
+ * @param port Port number.
+ * @return A valid socket descriptor, or INVALID_SOCKET on failure.
+ */
+SOCKET setup_socket(bool is_server, bool is_tcp, struct sockaddr_in *addr, struct sockaddr_in *client_addr, const char *host, uint16_t port) {
+    SOCKET sock = socket(AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
+    if (sock == INVALID_SOCKET) {
+        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_CREATE);
+    }
+
+    addr->sin_family = AF_INET;
+    // Validate port range before conversion
+    if (port < 0 || port > UINT16_MAX) {
+        close_socket(&sock);
+        return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_BIND);
+    }
+    addr->sin_port = htons((uint16_t)port);
+
+    if (is_server) {
+        addr->sin_addr.s_addr = INADDR_ANY; // Bind to all available interfaces
+    } else {
+        // Use `getaddrinfo()` instead of `inet_pton()` for hostname resolution
+        struct addrinfo hints, *res = NULL;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = is_tcp ? SOCK_STREAM : SOCK_DGRAM;
+
+        int err = getaddrinfo(host, NULL, &hints, &res);
+        if (err != 0 || res == NULL) {
+            close_socket(&sock);
+            return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_RESOLVE);
+        }
+
+        // Copy resolved address into `addr`
+        struct sockaddr_in *resolved_addr = (struct sockaddr_in *)res->ai_addr;
+        addr->sin_addr = resolved_addr->sin_addr;
+        freeaddrinfo(res);
+    }
+
+    if (is_server) {
+        if (bind(sock, (struct sockaddr *)addr, sizeof(*addr)) == SOCKET_ERROR) {
+            close_socket(&sock);
+            return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_BIND);
+        }
+        if (is_tcp && listen(sock, SOMAXCONN) == SOCKET_ERROR) {
+            close_socket(&sock);
+            return SOCKET_ERROR_CODE(PLATFORM_SOCKET_ERROR_LISTEN);
+        }
+    } else if (!is_tcp) {
+        client_addr->sin_family = AF_INET;
+        client_addr->sin_port = htons(port);
+        client_addr->sin_addr = addr->sin_addr;
+    }
+
+    return sock;
+}
+
+/**
+ * Attempts to connect to a server with a timeout.
+ */
+PlatformSocketError connect_with_timeout(SOCKET sock, struct sockaddr_in *server_addr, int timeout_seconds) {
+    if (timeout_seconds <= 0) {
+        return PLATFORM_SOCKET_ERROR_TIMEOUT;
+    }
+
+    if (set_non_blocking_mode(sock) != 0) {
+        return PLATFORM_SOCKET_ERROR_CONNECT;
+    }
+
+    int result = connect(sock, (struct sockaddr *)server_addr, sizeof(*server_addr));
+    int last_error = GET_LAST_SOCKET_ERROR();
+
+    if (result < 0) {
+        if (last_error != PLATFORM_SOCKET_WOULDBLOCK &&
+            last_error != PLATFORM_SOCKET_INPROGRESS) {
+            restore_blocking_mode(sock);  // Restore blocking mode before returning
+            return PLATFORM_SOCKET_ERROR_CONNECT;
+        }
+
+        /* Connection is in progress; use select() to wait for completion. */
+        fd_set write_set;
+        FD_ZERO(&write_set);
+        FD_SET(sock, &write_set);
+
+        struct timeval timeout_val;
+        timeout_val.tv_sec  = timeout_seconds;
+        timeout_val.tv_usec = 0;
+        
+        // The cast is safe because valid socket descriptors are small positive numbers
+        int nfds = (int)(sock + 1);  // POSIX needs highest FD + 1, Windows ignores this
+        result = select(nfds, NULL, &write_set, NULL, &timeout_val);
+        if (result < 0) {
+            restore_blocking_mode(sock);
+            return PLATFORM_SOCKET_ERROR_SELECT;  // Better error classification
+        } else if (result == 0) {
+            restore_blocking_mode(sock);
+            return PLATFORM_SOCKET_ERROR_TIMEOUT;
+        } else {
+            /* We expect the socket to be ready for writing. */
+            if (FD_ISSET(sock, &write_set)) {
+                int so_error = 0;
+                socklen_t len = sizeof(so_error);
+                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (void *)&so_error, &len) != 0) {
+                    restore_blocking_mode(sock);
+                    return PLATFORM_SOCKET_ERROR_GETSOCKOPT;
+                }
+                restore_blocking_mode(sock);
+                return (so_error == 0) ? PLATFORM_SOCKET_SUCCESS : PLATFORM_SOCKET_ERROR_CONNECT;
+            } else {
+                /* This branch is unexpected if select() returned a positive value.
+                   We treat it as a connection error. */
+                restore_blocking_mode(sock);
+                return PLATFORM_SOCKET_ERROR_CONNECT;
+            }
+        }
+    }
+
+    /* If connect() succeeded immediately. */
+    restore_blocking_mode(sock);
+    return PLATFORM_SOCKET_SUCCESS;
+}
+

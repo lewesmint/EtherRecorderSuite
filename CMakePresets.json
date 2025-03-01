@@ -86,6 +86,21 @@
       {
         "name": "default",
         "configurePreset": "base"
+      },
+      {
+        "name": "windows-default",
+        "configurePreset": "windows-debug",
+        "targets": "ALL_BUILD"
+      },
+      {
+        "name": "linux-default",
+        "configurePreset": "linux-debug",
+        "targets": "all"
+      },
+      {
+        "name": "macos-default", 
+        "configurePreset": "macos-debug",
+        "targets": "all"
       }
     ],
     "testPresets": [
@@ -98,4 +113,3 @@
       }
     ]
   }
-  

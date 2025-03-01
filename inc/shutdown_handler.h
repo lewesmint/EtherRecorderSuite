@@ -2,8 +2,6 @@
 #define SHUTDOWN_HANDLER_H
 
 #include <stdbool.h>
-#include <winsock2.h>  
-#include <windows.h>  // Required for Interlocked operations
 
 /**
  * @brief Installs the shutdown handler.

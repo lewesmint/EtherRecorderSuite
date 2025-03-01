@@ -49,32 +49,32 @@ extern const char PATH_SEPARATOR;
  * @param base The numeric base to interpret (e.g. 10).
  * @return The converted value, or 0 on failure.
  */
-uint64_t platform_strtoull(const char* str, char** endptr, int base);
+uint64_t platform_strtoull(const char *str, char **endptr, int base);
 
 /**
  * @brief Gets the current time as a formatted string (YYYY-mm-dd HH:MM:SS).
  * @param buffer Pointer to the buffer where the formatted string is placed.
  * @param buffer_size Size of @p buffer.
  */
-void get_current_time(char* buffer, size_t buffer_size);
+void get_current_time(char *buffer, size_t buffer_size);
 
 /**
  * @brief Initialises a mutex.
  * @param mutex Pointer to the mutex structure.
  */
-void init_mutex(PlatformMutex_T* mutex);
+int init_mutex(PlatformMutex_T *mutex);
 
 /**
  * @brief Locks a mutex.
  * @param mutex Pointer to the mutex structure.
  */
-void lock_mutex(PlatformMutex_T* mutex);
+int lock_mutex(PlatformMutex_T *mutex);
 
 /**
  * @brief Unlocks a mutex.
  * @param mutex Pointer to the mutex structure.
  */
-void unlock_mutex(PlatformMutex_T* mutex);
+int unlock_mutex(PlatformMutex_T *mutex);
 
 /**
  * @brief Prints a formatted string to a given stream.
@@ -95,6 +95,29 @@ void sleep_ms(unsigned int milliseconds);
  * @param seconds Number of seconds to sleep.
  */
 void sleep_seconds(double seconds);
+
+/**
+ * @brief Gets the last platform error code.
+ *
+ * @return The error code.
+ */
+int platform_get_last_error(void);
+
+/**
+ * @brief Gets a string describing the last error.
+ *
+ * @param buffer Buffer to store the error message.
+ * @param buffer_size Size of the buffer.
+ * @return The buffer containing the error message.
+ */
+char* platform_get_error_message(char* buffer, size_t buffer_size);
+
+/**
+ * @brief Sleep for the specified number of milliseconds.
+ *
+ * @param ms Number of milliseconds to sleep.
+ */
+void sleep_ms(uint32_t ms);
 
 // /**
 //  * @brief Generates a random number.
@@ -153,6 +176,20 @@ uint32_t platform_random_range(uint32_t min, uint32_t max);
 
 char* get_cwd(char* buffer, int max_length);
 void get_high_resolution_timestamp(LARGE_INTEGER* timestamp);
+
+/**
+ * @brief Function type for shutdown callbacks
+ */
+typedef void (*ShutdownCallback_T)(void);
+
+/**
+ * @brief Register handler for application termination signals 
+ * (Ctrl+C on Windows, SIGINT/SIGTERM on POSIX)
+ * 
+ * @param callback Function to call when termination signal is received
+ * @return bool true on success, false on failure
+ */
+bool platform_register_shutdown_handler(ShutdownCallback_T callback);
 
 #ifdef __cplusplus
 }

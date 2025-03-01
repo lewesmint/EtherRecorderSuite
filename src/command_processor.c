@@ -10,6 +10,8 @@
 
 
 extern void logger_set_level(LogLevel level);
+extern LogLevel logger_get_level(); // You'd need to add this function
+extern const char* get_level_name(LogLevel level); // You'd need to add this function
 
 
 /* A lookup table mapping log level strings to their enum values */
@@ -78,10 +80,15 @@ static void process_log_level_command(const char* value)
 
     for (size_t i = 0; i < table_size; i++) {        
         if (str_cmp_nocase(value, log_level_table[i].name) == 0) {
+            LogLevel previous_level = logger_get_level(); // You'd need to add this function
+            logger_log(previous_level, "Log level changing from %s to %s", 
+                       get_level_name(previous_level), log_level_table[i].name);
+                       
+            // Then change the level
             logger_set_level(log_level_table[i].level);
-            // TODO 
-			// should check whether the log will now show INFO or not
-            logger_log(LOG_INFO, "Log level changed to %s", log_level_table[i].name);
+
+            // Log at the new level too
+            logger_log(log_level_table[i].level, "Log level changed to %s", log_level_table[i].name);
             found = true;
             break;
         }

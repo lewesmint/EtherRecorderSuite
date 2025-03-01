@@ -5,7 +5,6 @@
 #ifndef LOG_QUEUE_H
 #define LOG_QUEUE_H
 
-#include <winsock2.h>
 
 #include "logger.h"
 

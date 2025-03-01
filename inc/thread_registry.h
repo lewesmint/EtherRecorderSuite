@@ -6,7 +6,7 @@
 #define THREAD_REGISTRY_H
 
 #include <stdbool.h>
-#include <windows.h>
+
 #include "app_thread.h"
 #include "platform_mutex.h"
 
@@ -62,7 +62,8 @@ bool thread_registry_init(ThreadRegistry* registry);
  * @param auto_cleanup Whether to automatically clean up thread resources
  * @return bool true on success, false on failure
  */
-bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, HANDLE handle, bool auto_cleanup);
+bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, 
+                            PlatformThread_T handle, bool auto_cleanup);
 
 /**
  * @brief Update a thread's state in the registry

@@ -1,5 +1,9 @@
 {
     "files.associations": {
-        "logger.h": "c"
-    }
+        "logger.h": "c",
+        "app_thread.h": "c",
+        "common_socket.h": "c",
+        "platform_sockets.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }

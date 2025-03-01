@@ -6,19 +6,22 @@
 #include <limits.h>  // For INT_MAX
 #include <stdlib.h>  // For malloc, free
 
-#include "common_socket.h"
 #include "logger.h"
 #include "app_config.h"
 #include "app_thread.h"
 #include "command_processor.h"
 #include "shutdown_handler.h"
 #include "comm_threads.h"
+#include "platform_sockets.h"
 
 
-uint32_t gs_listening_port = 4150;
+uint16_t gs_listening_port = 4150;
+
+#define START_MARKER  0xBAADF00D
+#define END_MARKER    0xDEADBEEF
 
 void init_from_config() {
-    gs_listening_port = get_config_int("command_interface", "listening_port", 4100);
+    gs_listening_port = get_config_uint16("command_interface", "listening_port", 4100);
 }
 
 #define COMMAND_BUFFER_SIZE (size_t)(4096)
@@ -78,6 +81,14 @@ static StateHandler states[] = {
     { process_send_ack }
 };
 
+// Add these state name strings for clarity
+static const char* state_names[] = {
+    "WAIT_FOR_START",
+    "WAIT_FOR_LENGTH",
+    "WAIT_FOR_MESSAGE",
+    "SEND_ACK"
+};
+
 /**
  * @brief Waits for data on a socket without blocking indefinitely.
  */
@@ -90,7 +101,9 @@ bool wait_for_data(SOCKET sock, int timeout_sec) {
     timeout.tv_sec = timeout_sec;
     timeout.tv_usec = 0;
 
-    int ret = select((int)sock + 1, &read_fds, NULL, NULL, &timeout);
+    // The cast is safe because valid socket descriptors are small positive numbers
+    int nfds = (int)(sock + 1);  // POSIX needs highest FD + 1, Windows ignores this
+    int ret = select(nfds, &read_fds, NULL, NULL, &timeout);
     return (ret > 0);
 }
 
@@ -147,6 +160,7 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
         return PROCESS_NEED_MORE_DATA;
     }
 
+    // Log buffer contents for debugging
     for (size_t i = 0; i < *length; i++) {
         char ch = buffer[i];
         if (ch >= 0x20 && ch <= 0x7E) {
@@ -161,8 +175,21 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
     if (memcmp(buffer, &expected_marker, 4) != 0) {
         uint32_t received_marker;
         memcpy(&received_marker, buffer, 4);
-        logger_log(LOG_DEBUG, "Invalid Start Marker [%h], position: %x", ntohl(received_marker));
-        consume_buffer(1);
+        // Fix: Remove the second %x format specifier that has no matching argument
+        logger_log(LOG_DEBUG, "Invalid Start Marker [0x%08X]", ntohl(received_marker));
+        
+        // Fix: Consume more bytes to avoid byte-by-byte loop
+        // Find the first occurrence of a potential marker byte
+        size_t skip = 1;
+        for (size_t i = 0; i < *length - 3; i++) {
+            if (buffer[i] == ((char*)&expected_marker)[0]) {
+                skip = i;
+                break;
+            }
+        }
+        
+        logger_log(LOG_DEBUG, "Skipping %zu bytes to next potential marker", skip);
+        consume_buffer(skip);
         return PROCESS_OK;
     }
 
@@ -242,13 +269,16 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
 
     // Calculate message body length
     uint32_t message_body_length = message_length - 16;
-    if (message_body_length > *length - 8) { // Prevent reading past buffer
-        logger_log(LOG_ERROR, "Message body length (%u) exceeds available data.", message_body_length);
-        consume_buffer(message_length - 8);  // Discard the corrupted message
+
+    // Verify we have enough buffer for the entire message structure:
+    // 4 bytes (index) + message_body_length + 4 bytes (end marker)
+    if (4 + message_body_length + 4 > *length) {
+        logger_log(LOG_ERROR, "Message structure exceeds available buffer size.");
+        consume_buffer(message_length - 8);
         return PROCESS_FAIL;
     }
 
-    // Ensure end marker is valid before processing the message
+    // Now safe to access the end marker
     uint32_t received_end_marker;
     memcpy(&received_end_marker, buffer + 4 + message_body_length, 4);
     received_end_marker = ntohl(received_end_marker);
@@ -285,7 +315,7 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
 }
 
 /**
- * @brief State: Send an ACK message back.
+ @brief State: Send an ACK message back.
  *
  * ACK packet structure:
  *   - Start Marker: 4 bytes
@@ -346,7 +376,7 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
         }
     }
 
-    logger_log(LOG_INFO, "Sent ACK %u", tmp);
+    logger_log(LOG_INFO, "Sent ACK %u", ack_index - 1);
 
     // Reset for next packet
     message_length = 0;
@@ -358,7 +388,7 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
  * @brief Main command interface loop handling the state machine.
  */ 
 void command_interface_loop(SOCKET client_sock) {
-
+    current_state = WAIT_FOR_START;
     while (!shutdown_signalled()) {
         int bytes = buffered_recv(client_sock);
         if (bytes < 0) {
@@ -369,7 +399,25 @@ void command_interface_loop(SOCKET client_sock) {
         // Process as long as there is data in the stream buffer.
         while (stream.buffer_length > 0) {
             logger_log(LOG_DEBUG, "stream.buffer_length: %d. Current State: %d", stream.buffer_length, current_state);
-            ProcessResult res = states[current_state].process(client_sock, stream.buffer, &stream.buffer_length);
+            ProcessResult res;
+            switch(current_state) {
+                case WAIT_FOR_START:
+                    res = process_wait_for_start(client_sock, stream.buffer, &stream.buffer_length);
+                    break;
+                case WAIT_FOR_LENGTH:
+                    res = process_wait_for_length(client_sock, stream.buffer, &stream.buffer_length);
+                    break;
+                case WAIT_FOR_MESSAGE:
+                    res = process_wait_for_message(client_sock, stream.buffer, &stream.buffer_length);
+                    break;
+                case SEND_ACK:
+                    res = process_send_ack(client_sock, stream.buffer, &stream.buffer_length);
+                    break;
+                default:
+                    logger_log(LOG_ERROR, "Unknown state: %d", current_state);
+                    res = PROCESS_FAIL;
+                    break;
+            }
 
             if (res == PROCESS_FAIL) {
                 logger_log(LOG_ERROR, "Error processing packet. Resetting state.");
@@ -382,7 +430,10 @@ void command_interface_loop(SOCKET client_sock) {
                 break;  // Wait for more data
             }
             // PROCESS_OK: continue to the next state in the state machine.
-            logger_log(LOG_DEBUG, "State transition: %d -> %d", current_state, current_state);
+            State previous_state = current_state;
+            logger_log(LOG_DEBUG, "State transition: %s -> %s", 
+                       state_names[previous_state], 
+                       state_names[current_state]);
         }
 
         // If we are in the SEND_ACK state even though the buffer is empty,
@@ -439,14 +490,14 @@ void* command_interface_thread_function(void* arg) {
             if (shutdown_signalled())
                 break;  // Graceful shutdown
 
-            logger_log(LOG_ERROR, "Accept failed.");
+            logger_log(LOG_ERROR, "Accept failed: %s", socket_error_string());
             continue;
         }
 
         logger_log(LOG_INFO, "Client connected.");
 
         // Handle client communication
-        command_interface_loop(sock);
+        command_interface_loop(client_sock);
 
         // Handle client disconnection
         close_socket(&client_sock);

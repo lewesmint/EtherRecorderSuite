@@ -6,7 +6,6 @@
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 
-#include <winsock2.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -70,6 +69,16 @@ double get_config_float(const char *section, const char *key, double default_val
  * @return The hexadecimal value associated with the key.
  */
 uint64_t get_config_hex(const char *section, const char *key, uint64_t default_value);
+
+/**
+ * @brief Retrieves a 16-bit unsigned integer value from the configuration.
+ *
+ * @param section The section of the configuration.
+ * @param key The key within the section.
+ * @param default_value The default value if the key is not found.
+ * @return The 16-bit unsigned integer value associated with the key.
+ */
+uint16_t get_config_uint16(const char* section, const char* key, uint16_t default_value);
 
 /**
  * @brief Frees the memory allocated for the configuration entries.

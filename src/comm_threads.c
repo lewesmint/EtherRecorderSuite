@@ -1,19 +1,12 @@
 #include "comm_threads.h"
+
 #include <string.h>
+#include <stdlib.h>
+
 #include "logger.h"
 #include "platform_utils.h"
 #include "thread_group.h"
-
-
-extern bool shutdown_signalled(void);
-
-// External declarations for stub functions
-extern void* pre_create_stub(void* arg);
-extern void* post_create_stub(void* arg);
-extern void* init_stub(void* arg);
-extern void* exit_stub(void* arg);
-extern void* init_wait_for_logger(void* arg);
-extern bool shutdown_signalled(void);
+#include "platform_sockets.h"
 
 
 bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile LONG* connection_closed) {
@@ -65,7 +58,7 @@ bool comms_thread_group_create_threads(CommsThreadGroup* group, struct sockaddr_
     snprintf(send_thread_label, 64, "%s.SEND", group->base.name);
     
     send_thread->label = send_thread_label;
-    send_thread->func = send_thread;
+    send_thread->func = send_thread_function;
     send_thread->pre_create_func = pre_create_stub;
     send_thread->post_create_func = post_create_stub;
     send_thread->init_func = init_wait_for_logger;
@@ -116,7 +109,7 @@ bool comms_thread_group_create_threads(CommsThreadGroup* group, struct sockaddr_
     snprintf(receive_thread_label, 64, "%s.RECEIVE", group->base.name);
     
     receive_thread->label = receive_thread_label;
-    receive_thread->func = receive_thread;
+    receive_thread->func = receive_thread_function;
     receive_thread->pre_create_func = pre_create_stub;
     receive_thread->post_create_func = post_create_stub;
     receive_thread->init_func = init_wait_for_logger;
@@ -244,7 +237,7 @@ static bool is_connection_closed(volatile LONG* flag) {
 /**
  * @brief Thread function for receiving data from a socket
  */
-void* receive_thread(void* arg) {
+void* receive_thread_function(void* arg) {
     AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     
@@ -335,7 +328,7 @@ void* receive_thread(void* arg) {
 /**
  * @brief Thread function for sending data to a socket
  */
-void* send_thread(void* arg) {
+void* send_thread_function(void* arg) {
     AppThread_T* thread_info = (AppThread_T*)arg;
     set_thread_label(thread_info->label);
     

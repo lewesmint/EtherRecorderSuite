@@ -4,20 +4,13 @@
 #include <string.h>     // for memcpy, memset, strncpy, memmove, strerror
 #include <time.h>       // for time_t, time, ctime
 
-#include "common_socket.h"
+// #include "common_socket.h"
 #include "app_thread.h"
 #include "logger.h"
 #include "platform_utils.h"
+#include "platform_sockets.h"
 #include "app_config.h"
 #include "comm_threads.h"
-
-// External declarations for stub functions
-extern void* pre_create_stub(void* arg);
-extern void* post_create_stub(void* arg);
-extern void* init_stub(void* arg);
-extern void* exit_stub(void* arg);
-extern void* init_wait_for_logger(void* arg);
-extern bool shutdown_signalled(void);
 
 // Default configuration values
 #define DEFAULT_RETRY_LIMIT 10
@@ -42,7 +35,7 @@ static volatile LONG suppress_client_send_data = TRUE;
  * @return A valid socket on success, or INVALID_SOCKET on failure.
  */
 static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in* addr,
-    struct sockaddr_in* client_addr, const char* hostname, int port, int conn_timeout) {
+    struct sockaddr_in* client_addr, const char* hostname, uint16_t port, int conn_timeout) {
     
     int backoff = 1;  // Start with a 1-second backoff
     int backoff_max = get_config_int("network", "client.backoff_max_seconds", DEFAULT_BACKOFF_MAX_SECONDS);
@@ -92,7 +85,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
 AppThread_T client_send_thread = {
     .suppressed = true,
     .label = "CLIENT.SEND",
-    .func = send_thread,
+    .func = send_thread_function,
     .data = NULL,
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
@@ -103,7 +96,7 @@ AppThread_T client_send_thread = {
 AppThread_T client_receive_thread = {
     .suppressed = true,
     .label = "CLIENT.RECEIVE",
-    .func = receive_thread,
+    .func = receive_thread_function,
     .data = NULL,
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
@@ -116,11 +109,11 @@ AppThread_T client_receive_thread = {
  */
 static void cleanup_thread_handles(HANDLE send_handle, HANDLE receive_handle) {
     if (send_handle != NULL) {
-        CloseHandle(send_handle);
+        platform_thread_close(send_handle);
     }
     
     if (receive_handle != NULL) {
-        CloseHandle(receive_handle);
+        platform_thread_close(receive_handle);
     }
 }
 
@@ -203,7 +196,7 @@ void* clientMainThread(void* arg) {
         client_info->server_hostname[sizeof(client_info->server_hostname) - 1] = '\0';
     }
     
-    client_info->port = get_config_int("network", "client.port", client_info->port);
+    client_info->port = get_config_uint16("network", "client.port", client_info->port);
     client_info->send_interval_ms = get_config_int("network", "client.send_interval_ms", client_info->send_interval_ms);
     client_info->send_test_data = get_config_bool("network", "client.send_test_data", false);
     
@@ -216,7 +209,7 @@ void* clientMainThread(void* arg) {
     logger_log(LOG_INFO, "Client Manager will attempt to connect to Server: %s, port: %d", 
                client_info->server_hostname, client_info->port);
 
-    int port = client_info->port;
+    uint16_t port = client_info->port;
     bool is_tcp = client_info->is_tcp;
     bool is_server = false;
     

@@ -1,13 +1,15 @@
 #include "message_queue.h"
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h> // For Interlocked operations and thread functions
+#include "platform_threads.h"
+#include "platform_atomic.h"
+#include "platform_time.h"
 #include "logger.h"
+#include "app_thread.h"
 
-#define MAX_THREADS 5
-#define MESSAGE_QUEUE_SIZE 1024  // Power of 2 for performance
+#define MAX_THREAD_QUEUES 128  // Define MAX_THREAD_QUEUES if not defined elsewhere
 
-static ThreadQueue_T thread_queues[MAX_THREADS];
+static ThreadQueue_T thread_queues[MAX_THREAD_QUEUES];
 
 bool message_queue_init(MessageQueue_T* queue, uint32_t max_size) {
     if (!queue) {
@@ -21,35 +23,43 @@ bool message_queue_init(MessageQueue_T* queue, uint32_t max_size) {
     // Set max_size (cannot exceed MESSAGE_QUEUE_SIZE)
     queue->max_size = (max_size > 0 && max_size < MESSAGE_QUEUE_SIZE) ? max_size : MESSAGE_QUEUE_SIZE;
     
-    // Create events for optional blocking behavior
-    queue->not_empty_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    queue->not_full_event = CreateEvent(NULL, TRUE, TRUE, NULL);
+    // Allocate memory for the message array
+    queue->entries = (Message_T*)calloc(queue->max_size, sizeof(Message_T));
+    if (!queue->entries) {
+        logger_log(LOG_ERROR, "Failed to allocate memory for message queue");
+        return false;
+    }
     
-    if (!queue->not_empty_event || !queue->not_full_event) {
+    // Create events for optional blocking behavior
+    if (!platform_event_create(&queue->not_empty_event, false, false) ||
+        !platform_event_create(&queue->not_full_event, false, true)) {
+        
         logger_log(LOG_ERROR, "Failed to create queue synchronization events");
-        if (queue->not_empty_event) CloseHandle(queue->not_empty_event);
-        if (queue->not_full_event) CloseHandle(queue->not_full_event);
+        free(queue->entries);
+        queue->entries = NULL;
+        platform_event_destroy(&queue->not_empty_event);
+        platform_event_destroy(&queue->not_full_event);
         return false;
     }
     
     return true;
 }
 
-bool message_queue_push(MessageQueue_T* queue, const Message_T* message, DWORD timeout_ms) {
+bool message_queue_push(MessageQueue_T* queue, const Message_T* message, uint32_t timeout_ms) {
     if (!queue || !message) {
         return false;
     }
     
-    DWORD start_time = GetTickCount();
+    uint32_t start_time = platform_get_tick_count();
     
     while (true) {
         // Atomically read current indices
-        long head = InterlockedCompareExchange(&queue->head, 0, 0);
-        long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
-        long next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
+        int32_t head = platform_atomic_compare_exchange((volatile long*)&queue->head, 0, 0);
+        int32_t tail = platform_atomic_compare_exchange((volatile long*)&queue->tail, 0, 0);
+        int32_t next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
         
         // Calculate current size
-        long size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
+        int32_t size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
         
         // Check if queue is full
         if (next_head == tail || (queue->max_size > 0 && size >= queue->max_size)) {
@@ -59,15 +69,15 @@ bool message_queue_push(MessageQueue_T* queue, const Message_T* message, DWORD t
             }
             
             // Check if we've exceeded our timeout
-            DWORD elapsed = GetTickCount() - start_time;
+            uint32_t elapsed = platform_get_tick_count() - start_time;
             if (elapsed >= timeout_ms) {
                 return false;
             }
             
             // Wait for space (with remaining timeout)
-            DWORD remaining = timeout_ms - elapsed;
-            DWORD wait_result = WaitForSingleObject(queue->not_full_event, remaining);
-            if (wait_result != WAIT_OBJECT_0) {
+            uint32_t remaining = timeout_ms - elapsed;
+            int wait_result = platform_event_wait(&queue->not_full_event, remaining);
+            if (wait_result != PLATFORM_WAIT_SUCCESS) {
                 return false;
             }
             
@@ -76,16 +86,16 @@ bool message_queue_push(MessageQueue_T* queue, const Message_T* message, DWORD t
         }
         
         // Try to reserve the slot by updating head
-        if (InterlockedCompareExchange(&queue->head, next_head, head) == head) {
+        if (platform_atomic_compare_exchange((volatile long*)&queue->head, next_head, head) == head) {
             // Successfully reserved, copy message data
             memcpy(&queue->entries[head], message, sizeof(Message_T));
             
             // Signal not empty
-            SetEvent(queue->not_empty_event);
+            platform_event_set(&queue->not_empty_event);
             
             // Check if queue is now full
             if (next_head == tail || (queue->max_size > 0 && size + 1 >= queue->max_size)) {
-                ResetEvent(queue->not_full_event);
+                platform_event_reset(&queue->not_full_event);
             }
             
             return true;
@@ -95,17 +105,17 @@ bool message_queue_push(MessageQueue_T* queue, const Message_T* message, DWORD t
     }
 }
 
-bool message_queue_pop(MessageQueue_T* queue, Message_T* message, DWORD timeout_ms) {
+bool message_queue_pop(MessageQueue_T* queue, Message_T* message, uint32_t timeout_ms) {
     if (!queue || !message) {
         return false;
     }
     
-    DWORD start_time = GetTickCount();
+    uint32_t start_time = platform_get_tick_count();
     
     while (true) {
         // Atomically read current indices
-        long head = InterlockedCompareExchange(&queue->head, 0, 0);
-        long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
+        int32_t head = platform_atomic_compare_exchange((volatile long*)&queue->head, 0, 0);
+        int32_t tail = platform_atomic_compare_exchange((volatile long*)&queue->tail, 0, 0);
         
         // Check if queue is empty
         if (head == tail) {
@@ -115,15 +125,15 @@ bool message_queue_pop(MessageQueue_T* queue, Message_T* message, DWORD timeout_
             }
             
             // Check if we've exceeded our timeout
-            DWORD elapsed = GetTickCount() - start_time;
+            uint32_t elapsed = platform_get_tick_count() - start_time;
             if (elapsed >= timeout_ms) {
                 return false;
             }
             
             // Wait for a message (with remaining timeout)
-            DWORD remaining = timeout_ms - elapsed;
-            DWORD wait_result = WaitForSingleObject(queue->not_empty_event, remaining);
-            if (wait_result != WAIT_OBJECT_0) {
+            uint32_t remaining = timeout_ms - elapsed;
+            int wait_result = platform_event_wait(&queue->not_empty_event, remaining);
+            if (wait_result != PLATFORM_WAIT_SUCCESS) {
                 return false;
             }
             
@@ -135,17 +145,17 @@ bool message_queue_pop(MessageQueue_T* queue, Message_T* message, DWORD timeout_
         Message_T copied_message = queue->entries[tail];
         
         // Try to atomically update tail
-        long next_tail = (tail + 1) % MESSAGE_QUEUE_SIZE;
-        if (InterlockedCompareExchange(&queue->tail, next_tail, tail) == tail) {
+        int32_t next_tail = (tail + 1) % MESSAGE_QUEUE_SIZE;
+        if (platform_atomic_compare_exchange((volatile long*)&queue->tail, next_tail, tail) == tail) {
             // Successfully updated tail, provide the message
             memcpy(message, &copied_message, sizeof(Message_T));
             
             // Signal not full
-            SetEvent(queue->not_full_event);
+            platform_event_set(&queue->not_full_event);
             
             // Check if queue is now empty
             if (next_tail == head) {
-                ResetEvent(queue->not_empty_event);
+                platform_event_reset(&queue->not_empty_event);
             }
             
             return true;
@@ -160,8 +170,8 @@ bool message_queue_is_empty(MessageQueue_T* queue) {
         return true;
     }
     
-    long head = InterlockedCompareExchange(&queue->head, 0, 0);
-    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
+    int32_t head = platform_atomic_compare_exchange((volatile long*)&queue->head, 0, 0);
+    int32_t tail = platform_atomic_compare_exchange((volatile long*)&queue->tail, 0, 0);
     
     return (head == tail);
 }
@@ -171,9 +181,9 @@ bool message_queue_is_full(MessageQueue_T* queue) {
         return false;
     }
     
-    long head = InterlockedCompareExchange(&queue->head, 0, 0);
-    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
-    long next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
+    int32_t head = platform_atomic_compare_exchange((volatile long*)&queue->head, 0, 0);
+    int32_t tail = platform_atomic_compare_exchange((volatile long*)&queue->tail, 0, 0);
+    int32_t next_head = (head + 1) % MESSAGE_QUEUE_SIZE;
     
     // Check if physically full or at max_size limit
     if (next_head == tail) {
@@ -181,7 +191,7 @@ bool message_queue_is_full(MessageQueue_T* queue) {
     }
     
     if (queue->max_size > 0) {
-        long size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
+        int32_t size = (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
         return (size >= queue->max_size);
     }
     
@@ -193,8 +203,8 @@ uint32_t message_queue_get_size(MessageQueue_T* queue) {
         return 0;
     }
     
-    long head = InterlockedCompareExchange(&queue->head, 0, 0);
-    long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
+    int32_t head = platform_atomic_compare_exchange((volatile long*)&queue->head, 0, 0);
+    int32_t tail = platform_atomic_compare_exchange((volatile long*)&queue->tail, 0, 0);
     
     return (head >= tail) ? (head - tail) : (MESSAGE_QUEUE_SIZE - tail + head);
 }
@@ -205,12 +215,12 @@ void message_queue_clear(MessageQueue_T* queue) {
     }
     
     // In lock-free design, we just reset head and tail
-    InterlockedExchange(&queue->head, 0);
-    InterlockedExchange(&queue->tail, 0);
+    platform_atomic_exchange((volatile long*)&queue->head, 0);
+    platform_atomic_exchange((volatile long*)&queue->tail, 0);
     
     // Reset synchronization events
-    ResetEvent(queue->not_empty_event);
-    SetEvent(queue->not_full_event);
+    platform_event_reset(&queue->not_empty_event);
+    platform_event_set(&queue->not_full_event);
 }
 
 void message_queue_destroy(MessageQueue_T* queue) {
@@ -218,14 +228,20 @@ void message_queue_destroy(MessageQueue_T* queue) {
         return;
     }
     
+    // Free the allocated message array
+    if (queue->entries) {
+        free(queue->entries);
+        queue->entries = NULL;
+    }
+    
     // Clean up synchronization objects
-    CloseHandle(queue->not_empty_event);
-    CloseHandle(queue->not_full_event);
+    platform_event_destroy(&queue->not_empty_event);
+    platform_event_destroy(&queue->not_full_event);
 }
 
-ThreadQueue_T* register_thread(HANDLE thread_handle) {
-    for (int i = 0; i < MAX_THREADS; i++) {
-        LONG prev_active = InterlockedCompareExchange(&thread_queues[i].active, 1, 0);
+ThreadQueue_T* register_thread(PlatformThread_T thread_handle) {
+    for (int i = 0; i < MAX_THREAD_QUEUES; i++) {
+        long prev_active = platform_atomic_compare_exchange((volatile long*)&thread_queues[i].active, 1, 0);
         if (prev_active == 0) {
             // Found an inactive slot
             thread_queues[i].thread_handle = thread_handle;
@@ -237,20 +253,16 @@ ThreadQueue_T* register_thread(HANDLE thread_handle) {
     return NULL;
 }
 
-void deregister_thread(HANDLE thread_handle) {
-    for (int i = 0; i < MAX_THREADS; i++) {
-        if (thread_queues[i].active && thread_queues[i].thread_handle == thread_handle) {
+void deregister_thread(PlatformThread_T thread_handle) {
+    for (int i = 0; i < MAX_THREAD_QUEUES; i++) {
+        if (thread_queues[i].active && platform_thread_equal(thread_queues[i].thread_handle, thread_handle)) {
             message_queue_destroy(&thread_queues[i].queue);
-            InterlockedExchange(&thread_queues[i].active, 0);
+            platform_atomic_exchange((volatile long*)&thread_queues[i].active, 0);
             break;
         }
     }
 }
 
-bool is_thread_active(HANDLE thread_handle) {
-    DWORD exit_code;
-    if (GetExitCodeThread(thread_handle, &exit_code)) {
-        return exit_code == STILL_ACTIVE;
-    }
-    return false;
+bool is_thread_active(PlatformThread_T thread_handle) {
+    return platform_thread_is_active(thread_handle);
 }

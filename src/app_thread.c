@@ -1,7 +1,6 @@
 #include "app_thread.h"
 
 #include <stdbool.h>
-#include <windows.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
