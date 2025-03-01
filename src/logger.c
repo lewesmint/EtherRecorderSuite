@@ -401,7 +401,7 @@ static bool open_log_file_if_needed(ThreadLogFile *p_log_file) {
  * @brief Rotates the log file if it exceeds the configured size.
  */
 static void rotate_log_file_if_needed(ThreadLogFile *p_log_file) {
-    lock_mutex(&logging_mutex);
+    // No lock here - caller must hold the lock
     struct stat st;
     if (stat(p_log_file->log_file_name, &st) == 0 && st.st_size >= g_log_file_size) {
         fclose(p_log_file->log_fp);
@@ -411,11 +411,9 @@ static void rotate_log_file_if_needed(ThreadLogFile *p_log_file) {
         rename(p_log_file->log_file_name, rotated_log_filename);
         p_log_file->log_fp = fopen(p_log_file->log_file_name, "a");
         if (p_log_file->log_fp == NULL) {
-            unlock_mutex(&logging_mutex);
             return;
         }
     }
-    unlock_mutex(&logging_mutex);
 }
 
 /**

@@ -151,9 +151,17 @@ bool comms_thread_group_create_threads(CommsThreadGroup* group, struct sockaddr_
     }
     
     if (!thread_group_add(&group->base, receive_thread)) {
+        // Remove the already added send thread
+        thread_group_remove(&group->base, send_thread->label);
+        
+        // Free all resources
         free(receive_args);
         free(receive_thread_label);
         free(receive_thread);
+        free(send_args);
+        free(send_thread_label);
+        free(send_thread);
+        
         logger_log(LOG_ERROR, "Failed to add receive thread to group");
         return false;
     }
