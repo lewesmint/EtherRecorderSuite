@@ -40,7 +40,7 @@ int platform_thread_join(PlatformThread_T thread, void **retval) {
 int platform_thread_close(PlatformThread_T *thread) {
 #ifdef _WIN32
     if (*thread != NULL) {
-        platform_thread_close(*thread);
+        CloseHandle(*thread);  // Use Windows API directly
         *thread = NULL;
         return 0;
     }
@@ -81,6 +81,8 @@ int platform_thread_wait_single(PlatformThread_T thread, uint32_t timeout_ms) {
             ts.tv_nsec -= 1000000000;
         }
         
+        // Add conditional compilation:
+#if defined(__GLIBC__) && defined(_GNU_SOURCE)
         int result = pthread_timedjoin_np(thread, NULL, &ts);
         if (result == 0) {
             return PLATFORM_WAIT_SUCCESS;
@@ -88,6 +90,39 @@ int platform_thread_wait_single(PlatformThread_T thread, uint32_t timeout_ms) {
             return PLATFORM_WAIT_TIMEOUT;
         }
         return PLATFORM_WAIT_ERROR;
+#else
+        // Fall back for macOS and other systems without GNU extensions
+        struct timespec sleep_ts = {0, 1000000}; // Start with 1ms
+        unsigned int backoff = 1; // For exponential backoff
+        uint64_t deadline_us = ((uint64_t)ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
+
+        while (1) {
+            // Try to join with zero timeout
+            int join_result = pthread_join(thread, NULL);
+            if (join_result == 0) {
+                return PLATFORM_WAIT_SUCCESS;
+            } else if (join_result != EBUSY) {
+                // Thread is likely already joined or invalid
+                return PLATFORM_WAIT_ERROR;
+            }
+            
+            // Check timeout
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            uint64_t now_us = ((uint64_t)now.tv_sec * 1000000) + now.tv_usec;
+            
+            if (now_us >= deadline_us) {
+                return PLATFORM_WAIT_TIMEOUT;
+            }
+            
+            // Adaptive sleep with exponential backoff (max 10ms)
+            sleep_ts.tv_nsec = (1000000 * backoff);
+            if (sleep_ts.tv_nsec > 10000000) sleep_ts.tv_nsec = 10000000;
+            backoff *= 2;
+            
+            nanosleep(&sleep_ts, NULL);
+        }
+#endif
     }
 #endif
 }
@@ -139,11 +174,11 @@ int platform_thread_wait_multiple(PlatformThread_T *threads, uint32_t count, boo
                     
                     if (!wait_all) {
                         free(thread_done);
-                        return PLATFORM__WAIT_SUCCESS;
+                        return PLATFORM_WAIT_SUCCESS;
                     }
                 } else if (!wait_all && result == PLATFORM_WAIT_TIMEOUT) {
                     free(thread_done);
-                    return PLATFORM__WAIT_TIMEOUT;
+                    return PLATFORM_WAIT_TIMEOUT;
                 }
             }
         }

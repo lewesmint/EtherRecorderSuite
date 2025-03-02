@@ -13,8 +13,9 @@
 
 extern bool wait_for_all_threads_to_complete(int time_ms);
 
-CONDITION_VARIABLE shutdown_condition;
-CRITICAL_SECTION shutdown_mutex;
+
+PlatformCondition_T shutdown_condition;
+PlatformMutex_T shutdown_mutex;
 
 void print_usage(const char *progname) {
     printf("Usage: %s [-c <config_file>]\n", progname);
@@ -23,7 +24,7 @@ void print_usage(const char *progname) {
 }
 
 //default config file
-char config_file_name[MAX_PATH] = "config.ini";
+    char config_file_name[MAX_PATH_LEN] = "config.ini";
 
 bool parse_args(int argc, char *argv[]) {
     char *config_file = NULL;  // Optional config file
@@ -50,7 +51,7 @@ bool parse_args(int argc, char *argv[]) {
 }
 
 int print_working_directory() {
-    char cwd[MAX_PATH];
+    char cwd[MAX_PATH_LEN];
     if (get_cwd(cwd, sizeof(cwd)) != NULL) {
         printf("Current working directory: %s\n", cwd);
         return EXIT_SUCCESS;
@@ -142,4 +143,69 @@ int main(int argc, char* argv[]) {
     app_thread_cleanup();
     
     return app_exit();
+}
+
+#include <stdio.h>
+
+// Define some log levels
+typedef enum {
+    TEST_DEBUG,
+    TEST_INFO,
+    TEST_ERROR
+} TestLogLevel;
+
+// A simple logging function
+void test_log(TestLogLevel level, const char* format, ...);
+
+// Test macro for debug builds
+#ifdef _DEBUG
+// Global flag for testing
+static int g_enable_tracing = 0;
+
+// Cross-platform approach
+#if defined(_MSC_VER)
+  // MSVC - use different pragma syntax
+  #define test_debug(level, fmt, ...) \
+      __pragma(warning(push)) \
+      __pragma(warning(disable:4003)) \
+      test_log(level, fmt, ##__VA_ARGS__) \
+      __pragma(warning(pop))
+#elif defined(__clang__)
+  // Clang - use your current approach
+  #define test_debug(level, fmt, ...) \
+      _Pragma("clang diagnostic push") \
+      _Pragma("clang diagnostic ignored \"-Wgnu-zero-variadic-macro-arguments\"") \
+      test_log(level, fmt, ##__VA_ARGS__) \
+      _Pragma("clang diagnostic pop")
+#else
+  // GCC and others
+  #define test_debug(level, fmt, ...) \
+      test_log(level, fmt, ##__VA_ARGS__)
+#endif
+
+#else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#define test_debug(level, fmt, ...) \
+    test_log(level, fmt, ##__VA_ARGS__)
+#pragma clang diagnostic pop
+#endif
+
+// Sample implementation to make sure it links
+#include <stdarg.h>
+
+void test_log(TestLogLevel level, const char* format, ...) {
+    (void) level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    printf("\n");
+}
+
+// Test it in a simple main function
+int main2() {
+    test_debug(TEST_INFO, "Simple message");
+    test_debug(TEST_INFO, "Message with arg: %d", 42);
+    return 0;
 }

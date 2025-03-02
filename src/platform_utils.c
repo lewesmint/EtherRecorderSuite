@@ -26,7 +26,7 @@
     const char PATH_SEPARATOR = '\\';
 #else // !_WIN32
     #define platform_mkdir(path) mkdir(path, 0755)
-    const char PATH_SEPARATOR = '/'
+    const char PATH_SEPARATOR = '/';
 #endif // _WIN32
 
 // extern CRITICAL_SECTION rand_mutex;
@@ -142,7 +142,7 @@ void strip_directory_path(const char* full_file_path, char* directory_path, size
 int create_directories(const char* path) {
     if (!path || !*path) return 0;
 
-    char tmp[PATH_MAX];
+    char tmp[MAX_PATH_LEN];
     snprintf(tmp, sizeof(tmp), "%s", path);
 
     size_t len = strlen(tmp);
@@ -191,6 +191,7 @@ bool resolve_full_path(const char* filename, char* full_path, size_t size) {
 #ifdef _WIN32
     return (_fullpath(full_path, filename, size) != NULL);  // Compare with NULL instead of integer
 #else
+    (void)size;  // Unused parameter
     return (realpath(filename, full_path) != NULL);
 #endif
 }
@@ -220,7 +221,7 @@ int str_cmp_nocase(const char *s1, const char *s2) {
  * @brief Generates a random number using the system's preferred RNG.
  * @return A random number.
  */
-uint32_t platform_random() {
+uint32_t platform_random(void) {
     uint32_t random_number = 0;
 
 #ifdef _WIN32

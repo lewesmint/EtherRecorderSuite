@@ -7,9 +7,10 @@
 #include "platform_utils.h"
 #include "thread_group.h"
 #include "platform_sockets.h"
+#include "platform_atomic.h"
 
 
-bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile LONG* connection_closed) {
+bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile long* connection_closed) {
     if (!group || !name || !socket || !connection_closed) {
         return false;
     }
@@ -174,7 +175,7 @@ bool comms_thread_group_is_closed(CommsThreadGroup* group) {
         return true;
     }
     
-    return InterlockedCompareExchange(group->connection_closed, 0, 0) != 0;
+    return platform_atomic_compare_exchange(group->connection_closed, 0, 0) != 0;
 }
 
 void comms_thread_group_close(CommsThreadGroup* group) {
@@ -182,11 +183,11 @@ void comms_thread_group_close(CommsThreadGroup* group) {
         return;
     }
     
-    InterlockedExchange(group->connection_closed, TRUE);
+    platform_atomic_exchange(group->connection_closed, 1);
     logger_log(LOG_DEBUG, "Communication group '%s' marked as closed", group->base.name);
 }
 
-bool comms_thread_group_wait(CommsThreadGroup* group, DWORD timeout_ms) {
+bool comms_thread_group_wait(CommsThreadGroup* group, uint32_t timeout_ms) {
     if (!group) {
         return false;
     }
@@ -223,9 +224,9 @@ void comms_thread_group_cleanup(CommsThreadGroup* group) {
  * 
  * @param flag Pointer to the connection closed flag
  */
-static void mark_connection_closed(volatile LONG* flag) {
+static void mark_connection_closed(volatile long* flag) {
     if (flag) {
-        InterlockedExchange(flag, TRUE);
+        platform_atomic_exchange(flag, 1);
     }
 }
 
@@ -235,11 +236,11 @@ static void mark_connection_closed(volatile LONG* flag) {
  * @param flag Pointer to the connection closed flag
  * @return true if connection is closed, false otherwise
  */
-static bool is_connection_closed(volatile LONG* flag) {
+static bool is_connection_closed(volatile long* flag) {
     if (!flag) {
         return false;
     }
-    return InterlockedCompareExchange(flag, 0, 0) != 0;
+    return platform_atomic_compare_exchange(flag, 0, 0) != 0;
 }
 
 /**
@@ -298,16 +299,16 @@ void* receive_thread_function(void* arg) {
             message.header.flags = is_tcp ? 1 : 0; // Flag to indicate TCP/UDP
             
             // Ensure we don't overflow the message content
-            size_t copy_size = (bytes_received > sizeof(message.content)) 
-                ? sizeof(message.content) 
-                : bytes_received;
+            size_t copy_size = (bytes_received > 0)
+                ? MIN((size_t)bytes_received, sizeof(message.content))
+                : 0;
             
             // Copy received data into message content
             memcpy(message.content, buffer, copy_size);
             
             // If relay is enabled and outgoing queue exists, push the message
             if (comm_args->outgoing_queue) {
-                if (!message_queue_push(comm_args->outgoing_queue, &message, INFINITE)) {
+                if (!message_queue_push(comm_args->outgoing_queue, &message, PLATFORM_WAIT_INFINITE)) {
                     logger_log(LOG_WARN, "Failed to push received message to queue");
                 }
             }

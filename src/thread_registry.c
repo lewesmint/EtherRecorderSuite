@@ -224,7 +224,7 @@ void thread_registry_cleanup(ThreadRegistry* registry) {
         
         // Close handle if auto_cleanup is enabled
         if (entry->auto_cleanup && entry->handle != NULL) {
-            platform_thread_close(entry->handle);
+            platform_thread_close(&entry->handle);
         }
         
         free(entry);

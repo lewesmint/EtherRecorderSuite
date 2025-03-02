@@ -94,7 +94,7 @@ static void trim_comments(char* str) {
  * @copydoc load_config
  */
 bool load_config(const char* filename, char* log_result) {
-    char full_path[MAX_PATH];
+    char full_path[MAX_PATH_LEN];
     if (!resolve_full_path(filename, full_path, sizeof(full_path))) {
         snprintf(log_result, LOG_MSG_BUFFER_SIZE, "Failed to resolve full path for: %s\n", filename);
         return false;
@@ -226,7 +226,7 @@ uint16_t get_config_uint16(const char* section, const char* key, uint16_t defaul
 /**
  * @copydoc free_config
  */
-void free_config() {
+void free_config(void) {
     ConfigEntry *entry = config_entries;
     while (entry) {
         ConfigEntry *next = entry->next;

@@ -83,6 +83,6 @@ uint16_t get_config_uint16(const char* section, const char* key, uint16_t defaul
 /**
  * @brief Frees the memory allocated for the configuration entries.
  */
-void free_config();
+void free_config(void);
 
 #endif // APP_CCONFIG_H

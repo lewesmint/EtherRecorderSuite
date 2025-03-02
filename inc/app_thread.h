@@ -58,7 +58,7 @@ typedef void* (*ThreadFunc_T)(void* arg);
 typedef struct AppThread_T {
     const char* label;                   ///< Label for the thread (e.g., "CLIENT" or "SERVER")
     ThreadFunc_T func;                   ///< Actual function to execute
-    HANDLE thread_id;                    ///< Thread ID
+    ThreadHandle_T thread_id;            ///< Thread ID  ///< Platform-agnostic type
     void *data;                          ///< Thread-specific data
     PreCreateFunc_T pre_create_func;     ///< Pre-create function
     PostCreateFunc_T post_create_func;   ///< Post-create function

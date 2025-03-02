@@ -41,88 +41,6 @@ AppThread_T server_receive_thread = {
 };
 
 /**
- * Helper function to clean up thread handles
- */
-static void cleanup_thread_handles(ThreadHandle_T send_handle, ThreadHandle_T receive_handle) {
-    if (send_handle != NULL) {
-        platform_thread_close(&send_handle);
-    }
-    
-    if (receive_handle != NULL) {
-        platform_thread_close(&receive_handle);
-    }
-}
-
-/**
- * Waits for threads to complete with timeout
- * 
- * @param send_thread_id Send thread handle
- * @param receive_thread_id Receive thread handle
- * @param timeout_ms Timeout in milliseconds
- * @param connection_closed Pointer to connection closed flag
- * @return true if threads completed, false if timeout
- */
-static bool wait_for_communication_threads(
-    ThreadHandle_T send_thread_id, 
-    ThreadHandle_T receive_thread_id, 
-    int timeout_ms,
-    volatile long* connection_closed) {
-    
-    ThreadHandle_T thread_handles[2];
-    uint32_t handle_count = 0;
-    
-    if (send_thread_id != NULL) {
-        thread_handles[handle_count++] = send_thread_id;
-    }
-    
-    if (receive_thread_id != NULL) {
-        thread_handles[handle_count++] = receive_thread_id;
-    }
-    
-    if (handle_count == 0) {
-        return true; // No threads to wait for
-    }
-
-    // Check if threads already completed
-    if (handle_count == 1) {
-        int result = platform_thread_wait_single(thread_handles[0], 0);
-        if (result == PLATFORM_WAIT_SUCCESS) {
-            return true;
-        }
-    } else if (handle_count == 2) {
-        // Check if both threads already completed
-        int result1 = platform_thread_wait_single(thread_handles[0], 0);
-        int result2 = platform_thread_wait_single(thread_handles[1], 0);
-        if (result1 == PLATFORM_WAIT_SUCCESS && result2 == PLATFORM_WAIT_SUCCESS) {
-            return true;
-        }
-    }
-    
-    // Wait for all threads with timeout
-    int result = platform_thread_wait_multiple(thread_handles, handle_count, true, timeout_ms);
-    
-    if (result == PLATFORM_WAIT_SUCCESS) {
-        logger_log(LOG_DEBUG, "All communication threads completed normally");
-        return true;
-    } else if (result == PLATFORM_WAIT_TIMEOUT) {
-        logger_log(LOG_WARN, "Timeout waiting for communication threads");
-        
-        // Check if connection was marked as closed by the threads
-        if (platform_atomic_compare_exchange(connection_closed, 0, 0) != 0) {
-            logger_log(LOG_INFO, "Connection was closed by a thread, proceeding with cleanup");
-            return true;
-        }
-        
-        return false;
-    } else {
-        char error_buf[256];
-        platform_get_error_message(error_buf, sizeof(error_buf));
-        logger_log(LOG_ERROR, "Error waiting for communication threads: %s", error_buf);
-        return true; // Return true to allow cleanup
-    }
-}
-
-/**
  * Sets up the server listening socket with retry logic
  * 
  * @param addr Pointer to socket address structure to populate
@@ -198,7 +116,7 @@ void* serverListenerThread(void* arg) {
         
         // Accept a client connection
         struct sockaddr_in client_addr;
-        int client_len = sizeof(client_addr);
+        socklen_t client_len = sizeof(client_addr);
         memset(&client_addr, 0, sizeof(client_addr));
         
         logger_log(LOG_INFO, "Waiting for client connection...");

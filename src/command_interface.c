@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <limits.h>  // For INT_MAX
 #include <stdlib.h>  // For malloc, free
+#include <string.h>  // For memcpy, memcmp, memmove
 
 #include "logger.h"
 #include "app_config.h"
@@ -20,7 +21,7 @@ uint16_t gs_listening_port = 4150;
 #define START_MARKER  0xBAADF00D
 #define END_MARKER    0xDEADBEEF
 
-void init_from_config() {
+static void init_from_config(void) {
     gs_listening_port = get_config_uint16("command_interface", "listening_port", 4100);
 }
 
@@ -73,13 +74,6 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
 ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length);
 void command_interface_loop(SOCKET client_sock);
 
-/* State handler array in order of the state machine */
-static StateHandler states[] = {
-    { process_wait_for_start },
-    { process_wait_for_length },
-    { process_wait_for_message },
-    { process_send_ack }
-};
 
 // Add these state name strings for clarity
 static const char* state_names[] = {
@@ -155,7 +149,7 @@ void consume_buffer(size_t size) {
  */
 ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* length) {
     (void)sock;  // Unused parameter
-    logger_log(LOG_DEBUG, "top of process_wait_for_start length = %d", *length);
+    logger_log(LOG_DEBUG, "top of process_wait_for_start length = %zu", *length);
     if (*length < 4) {
         return PROCESS_NEED_MORE_DATA;
     }
@@ -164,10 +158,10 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
     for (size_t i = 0; i < *length; i++) {
         char ch = buffer[i];
         if (ch >= 0x20 && ch <= 0x7E) {
-            logger_log(LOG_DEBUG, "<- [%04d]: %c", i, ch);
+            logger_log(LOG_DEBUG, "<- [%04zu]: %c", i, ch);
         }
         else {
-            logger_log(LOG_DEBUG, "<- [%04d]: 0x%02X", i, (unsigned char)ch);
+            logger_log(LOG_DEBUG, "<- [%04zu]: 0x%02X", i, (unsigned char)ch);
         }
     }
 
@@ -204,7 +198,7 @@ ProcessResult process_wait_for_start(SOCKET sock, uint8_t* buffer, size_t* lengt
  */
 ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* length) {
     (void)sock;  // Unused parameter
-    logger_log(LOG_DEBUG, "top of process_wait_for_length length: %d", *length);
+    logger_log(LOG_DEBUG, "top of process_wait_for_length length: %zu", *length);
     if (*length < 4) {
         return PROCESS_NEED_MORE_DATA;
     }
@@ -212,10 +206,10 @@ ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* leng
     for (size_t i = 0; i < *length; i++) {
         char ch = buffer[i];
         if (ch >= 0x20 && ch <= 0x7E) {
-            logger_log(LOG_DEBUG, "<- [%04d]: %c", i, ch);
+            logger_log(LOG_DEBUG, "<- [%04zu]: %c", i, ch);
         }
         else {
-            logger_log(LOG_DEBUG, "<- [%04d]: 0x%02X", i, (unsigned char)ch);
+            logger_log(LOG_DEBUG, "<- [%04zu]: 0x%02X", i, (unsigned char)ch);
         }
     }
 
@@ -244,8 +238,8 @@ ProcessResult process_wait_for_length(SOCKET sock, uint8_t* buffer, size_t* leng
  */
 ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* length) {
     (void)sock;  // Unused parameter
-    logger_log(LOG_DEBUG, "top of process_wait_for_message length = %d", *length);
-    logger_log(LOG_DEBUG, "top of process_wait_for_message message_length = %d", message_length);
+    logger_log(LOG_DEBUG, "top of process_wait_for_message length = %zu", *length);
+    logger_log(LOG_DEBUG, "top of process_wait_for_message message_length = %u", message_length);
     // Since we already consumed 8 bytes (start marker and length), check for remaining packet length.
     if (*length < (message_length - 8)) {
         logger_log(LOG_DEBUG, "need more data");
@@ -254,10 +248,10 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
     for (size_t i = 0; i < *length; i++) {
         char ch = buffer[i];
         if (ch >= 0x20 && ch <= 0x7E) {
-            logger_log(LOG_DEBUG, "-< [%04d]: %c", i, ch);
+            logger_log(LOG_DEBUG, "-< [%04zu]: %c", i, ch);
         }
         else {
-            logger_log(LOG_DEBUG, "<- [%04d]: 0x%02X", i, (unsigned char)ch);
+            logger_log(LOG_DEBUG, "<- [%04zu]: 0x%02X", i, (unsigned char)ch);
         }
     }
 
@@ -326,7 +320,7 @@ ProcessResult process_wait_for_message(SOCKET sock, uint8_t* buffer, size_t* len
  */
 ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
     (void) buffer;
-    logger_log(LOG_DEBUG, "top of process_send_ack length = %d", *length);
+    logger_log(LOG_DEBUG, "top of process_send_ack length = %zu", *length);
     char ack_body[32];
     int ack_body_len = snprintf(ack_body, sizeof(ack_body), "ACK %u", received_index);
     if (ack_body_len < 0) {
@@ -336,7 +330,7 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
 
     int32_t ack_packet_length = 16 + ack_body_len;
     uint8_t ack_buffer[256];
-    if (ack_packet_length > sizeof(ack_buffer)) {
+    if ((size_t)ack_packet_length > sizeof(ack_buffer)) {
         logger_log(LOG_ERROR, "ACK message too long.");
         return PROCESS_FAIL;
     }
@@ -366,13 +360,13 @@ ProcessResult process_send_ack(SOCKET sock, uint8_t* buffer, size_t* length) {
         return PROCESS_FAIL;
     }
 
-    for (size_t i = 0; i < ack_packet_length; i++) {
+    for (size_t i = 0; i < (size_t)ack_packet_length; i++) {
         char ch = ack_buffer[i];
         if (ch >= 0x20 && ch <= 0x7E) {
-            logger_log(LOG_DEBUG, "-> [%04d]: %c", i, ch);
+            logger_log(LOG_DEBUG, "-> [%04zu]: %c", i, ch);
         }
         else {
-            logger_log(LOG_DEBUG, "-> ch[%04d]: 0x%02X", i, (unsigned char)ch);
+            logger_log(LOG_DEBUG, "-> ch[%04zu]: 0x%02X", i, (unsigned char)ch);
         }
     }
 
@@ -398,7 +392,7 @@ void command_interface_loop(SOCKET client_sock) {
 
         // Process as long as there is data in the stream buffer.
         while (stream.buffer_length > 0) {
-            logger_log(LOG_DEBUG, "stream.buffer_length: %d. Current State: %d", stream.buffer_length, current_state);
+            logger_log(LOG_DEBUG, "stream.buffer_length: %zu. Current State: %d", stream.buffer_length, current_state);
             ProcessResult res;
             switch(current_state) {
                 case WAIT_FOR_START:
@@ -482,7 +476,7 @@ void* command_interface_thread_function(void* arg) {
     // Main loop: Accept and handle client connections
     while (!shutdown_signalled()) {
         struct sockaddr_in client_addr;
-        int client_len = sizeof(client_addr);  // Use int for Windows compatibility
+        socklen_t client_len = sizeof(client_addr);  // Use int for Windows compatibility
         memset(&client_addr, 0, sizeof(client_addr));
 
         SOCKET client_sock = accept(sock, (struct sockaddr*)&client_addr, &client_len);

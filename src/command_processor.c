@@ -8,18 +8,11 @@
 #include "logger.h"
 #include "platform_utils.h"
 
-
-extern void logger_set_level(LogLevel level);
-extern LogLevel logger_get_level(); // You'd need to add this function
-extern const char* get_level_name(LogLevel level); // You'd need to add this function
-
-
 /* A lookup table mapping log level strings to their enum values */
 typedef struct {
     const char* name;
     LogLevel level;
 } LogLevelMap;
-
 
 static const LogLevelMap log_level_table[] = {
     {"trace",    LOG_TRACE},
@@ -144,4 +137,3 @@ void process_command(const char* command)
         logger_log(LOG_WARN, "Unknown command: %s", trimmed);
     }
 }
-

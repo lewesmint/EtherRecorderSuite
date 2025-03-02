@@ -17,6 +17,7 @@
     #include <unistd.h>
     #include <sys/random.h>
     #include <unistd.h> // For getcwd on non-Windows platforms
+    #include <limits.h> // For PATH_MAX on non-Windows platforms
 #endif // _WIN32
 
 #include "platform_mutex.h"
@@ -25,16 +26,17 @@
 extern "C" {
 #endif
 
+/**
+ * Platform-agnostic maximum path length constant
+ * - Windows MAX_PATH is typically 260
+ * - POSIX PATH_MAX is typically 4096 on many systems
+ * We use the larger of the two to ensure compatibility
+ */
 #ifdef _WIN32
-    #define sleep(x) Sleep(1000 * (x))
-    #ifndef PATH_MAX
-        #define PATH_MAX MAX_PATH
-    #endif // PATH_MAX
-#else // !_WIN32
-    #ifndef MAX_PATH
-        #define MAX_PATH PATH_MAX
-    #endif // MAX_PATH
-#endif // _WIN32
+    #define MAX_PATH_LEN MAX_PATH
+#else
+    #define MAX_PATH_LEN PATH_MAX
+#endif
 
 /*
  * Extern declaration of a platform-specific path separator.
@@ -150,7 +152,7 @@ int create_directories(const char* path);
 /**
  * @brief Initialises the console (e.g. disables Quick Edit mode on Windows).
  */
-void init_console();
+void init_console(void);
 
 /**
  * @brief Resolves the absolute (full) path of a given file/directory.
@@ -171,7 +173,7 @@ bool resolve_full_path(const char* filename, char* full_path, size_t size);
  */
 int str_cmp_nocase(const char *s1, const char *s2);
 
-uint32_t platform_random();
+uint32_t platform_random(void);
 uint32_t platform_random_range(uint32_t min, uint32_t max);
 
 char* get_cwd(char* buffer, int max_length);

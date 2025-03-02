@@ -32,6 +32,7 @@
     }
 #else
     // POSIX: Usually returns 0 for success, ETIMEDOUT for timeout, and other values for errors
+    (void)object_count; // Mark parameter as intentionally unused
     if (result == 0) {
         return PLATFORM_WAIT_SUCCESS;
     } else if (result == ETIMEDOUT) {

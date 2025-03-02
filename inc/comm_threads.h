@@ -13,6 +13,12 @@
 #define BLOCKING_TIMEOUT_SEC      10  // Blocking timeout in seconds
 
 /**
+ * Utility macros for common operations
+ */
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
+/**
  * @brief Relay operation mode
  */
 typedef enum {
@@ -32,7 +38,7 @@ typedef struct {
     SOCKET* sock;                  // Pointer to socket (allows updating from owner thread)
     struct sockaddr_in client_addr; // Client address information
     void* thread_info;             // Could be ClientThreadArgs_T or ServerThreadArgs_T
-    volatile LONG* connection_closed; // Atomic flag indicating connection state
+    volatile long* connection_closed; // Atomic flag indicating connection state
     
     // Relay functionality
     MessageQueue_T* incoming_queue; // Queue for incoming messages to be processed
@@ -129,7 +135,7 @@ bool transform_message(Message_T* message, RelayMode mode);
 typedef struct CommsThreadGroup {
     ThreadGroup base;              // Base thread group
     SOCKET* socket;                // Socket pointer (owned by parent thread)
-    volatile LONG* connection_closed; // Connection closed flag (owned by parent thread)
+    volatile long* connection_closed; // Connection closed flag (owned by parent thread)
     MessageQueue_T* incoming_queue; // Queue for incoming messages
     MessageQueue_T* outgoing_queue; // Queue for outgoing messages
 } CommsThreadGroup;
@@ -143,7 +149,7 @@ typedef struct CommsThreadGroup {
  * @param connection_closed Pointer to the connection closed flag
  * @return bool true on success, false on failure
  */
-bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile LONG* connection_closed);
+bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* socket, volatile long* connection_closed);
 
 /**
  * @brief Create send and receive threads for a connection
@@ -177,7 +183,7 @@ void comms_thread_group_close(CommsThreadGroup* group);
  * @param timeout_ms Maximum time to wait in milliseconds
  * @return bool true if all threads completed, false on timeout or error
  */
-bool comms_thread_group_wait(CommsThreadGroup* group, DWORD timeout_ms);
+bool comms_thread_group_wait(CommsThreadGroup* group, uint32_t timeout_ms);
 
 /**
  * @brief Clean up communication thread group resources

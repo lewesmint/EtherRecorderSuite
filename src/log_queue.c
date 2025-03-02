@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "platform_mutex.h"
 #include "platform_utils.h"
+#include "platform_atomic.h"
 
 extern PlatformMutex_T logging_mutex; // Mutex for thread safety
 LogQueue_T global_log_queue; // Define the log queue
@@ -20,14 +21,14 @@ void log_queue_init(LogQueue_T *queue) {
  * @copydoc log_queue_push
  */
 bool log_queue_push(LogQueue_T *log_queue, const LogEntry_T *entry) {
-    if (!entry || entry->thread_label == NULL) {
-        return false; // Prevent null pointer access
+    if (!entry || entry->thread_label[0] == '\0') {
+        return false; // Prevent null pointer access and empty thread labels
     }
 
     while (true) {
         // Atomically read current indices
-        long head = InterlockedCompareExchange(&log_queue->head, 0, 0);
-        long tail = InterlockedCompareExchange(&log_queue->tail, 0, 0);
+        long head = platform_atomic_compare_exchange(&log_queue->head, 0, 0);
+        long tail = platform_atomic_compare_exchange(&log_queue->tail, 0, 0);
         long next_head = (head + 1) % LOG_QUEUE_SIZE;
 
         // Check if queue is full
@@ -73,7 +74,7 @@ bool log_queue_push(LogQueue_T *log_queue, const LogEntry_T *entry) {
 
         // First, try to atomically reserve the slot by updating head
         // This is the crucial step - reserve BEFORE writing
-        if (InterlockedCompareExchange(&log_queue->head, next_head, head) == head) {
+        if (platform_atomic_compare_exchange(&log_queue->head, next_head, head) == head) {
             // Successfully reserved the slot at 'head'
             // Now we can safely write to it without races
             log_queue->entries[head] = *entry;
@@ -95,8 +96,8 @@ bool log_queue_pop(LogQueue_T *queue, LogEntry_T *entry) {
 
     while (true) {
         // Atomically read current indices
-        long tail = InterlockedCompareExchange(&queue->tail, 0, 0);
-        long head = InterlockedCompareExchange(&queue->head, 0, 0);
+        long tail = platform_atomic_compare_exchange(&queue->tail, 0, 0);
+        long head = platform_atomic_compare_exchange(&queue->head, 0, 0);
 
         // Check if queue is empty
         if (tail == head) {
@@ -108,7 +109,7 @@ bool log_queue_pop(LogQueue_T *queue, LogEntry_T *entry) {
         
         // Try to atomically update the tail
         long next_tail = (tail + 1) % LOG_QUEUE_SIZE;
-        if (InterlockedCompareExchange(&queue->tail, next_tail, tail) == tail) {
+        if (platform_atomic_compare_exchange(&queue->tail, next_tail, tail) == tail) {
             // Successfully updated tail, return the copied entry
             *entry = copied_entry;
             return true;

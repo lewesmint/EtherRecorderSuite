@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <string.h>
 
 #include "platform_utils.h"
 #include "platform_threads.h"
@@ -148,7 +149,7 @@ extern bool shutdown_signalled(void);
 
 #define NUM_THREADS (sizeof(all_threads) / sizeof(all_threads[0]))
 
-THREAD_LOCAL static const char *thread_label = NULL;
+static THREAD_LOCAL const char *thread_label = NULL;
 
 extern AppThread_T server_send_thread;
 extern AppThread_T server_receive_thread;
@@ -193,7 +194,7 @@ void set_thread_label(const char *label) {
     thread_label = label;
 }
 
-const char* get_thread_label() {
+const char* get_thread_label(void) {
     return thread_label;
 }
 
@@ -433,7 +434,7 @@ void check_for_suppression(void) {
     char* token = platform_strtok(suppressed_list_copy, ",", &context);
 
     while (token != NULL) {
-        for (int i = 0; i < NUM_THREADS; i++) {
+        for (size_t i = 0; i < NUM_THREADS; i++) {
             if (str_cmp_nocase(all_threads[i]->label, token) == 0) {
                 all_threads[i]->suppressed = true;
             }

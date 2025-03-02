@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdarg.h>  // Add this for variable arguments
 
 #include "platform_time.h"
 
@@ -34,39 +35,6 @@ typedef enum LogLevel {
     LOG_CRITICAL, /**< Critical level: Severe errors needing prompt attention */
     LOG_FATAL     /**< Fatal level: Errors causing premature program termination */
 } LogLevel;
-
-/**
- * @brief Logs a message with the specified log level.
- *
- * @param format The format string for the message.
- * @param ... The arguments for the format string.
- */
-void _logger_log(LogLevel level, const char* format, ...);
-
-#ifdef _DEBUG
-/*
- * In debug builds, if the log level is LOG_TRACE (or if g_trace_all is true),
- * prepend the file and line information to the log message.
- */
-
-#define _logger_log_helper(level, fmt, ...) _logger_log(level, fmt, ##__VA_ARGS__)
-
-#define logger_log(level, fmt, ...)                                \
-    do {                                                           \
-        if ((level) == LOG_TRACE || g_trace_all) {                 \
-            _logger_log_helper(level, "[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
-        } else {                                                   \
-            _logger_log_helper(level, fmt, ##__VA_ARGS__);           \
-        }                                                          \
-    } while (0)
-#else
-/*
- * In non-debug builds, always use the standard logging function without
- * file/line info.
- */
-#define logger_log(level, fmt, ...) \
-        _logger_log(level, fmt, ##__VA_ARGS__)
-#endif
 
 /**
  * @enum LogOutput
@@ -138,5 +106,81 @@ LogLevel logger_get_level(void);
  * @return The name of the log level as a string.
  */
 const char* get_level_name(LogLevel level);
+
+/**
+ * @brief Sets the log level.
+ * @param level The log level to set.
+ */
+void logger_set_level(LogLevel level);
+
+/**
+ * @brief Logs a message with the specified log level.
+ *
+ * @param format The format string for the message.
+ * @param ... The arguments for the format string.
+ */
+void _logger_log(LogLevel level, const char* format, ...);
+
+#ifdef _DEBUG
+/*
+ * In debug builds, if the log level is LOG_TRACE (or if g_trace_all is true),
+ * prepend the file and line information to the log message.
+ */
+
+// Helper macros for readability
+#define _logger_log_with_file_line(level, fmt, ...) \
+    _logger_log(level, "[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+
+#define _logger_log_without_file_line(level, fmt, ...) \
+    _logger_log(level, fmt, ##__VA_ARGS__)
+
+#if defined(_MSC_VER)
+  // MSVC - use different pragma syntax
+  #define logger_log(level, fmt, ...) \
+      __pragma(warning(push)) \
+      __pragma(warning(disable:4003)) \
+      ((level) == LOG_TRACE || g_trace_all ? \
+        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
+        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__)) \
+      __pragma(warning(pop))
+#elif defined(__clang__)
+  // Clang approach
+  #pragma clang diagnostic push
+  #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+  #define logger_log(level, fmt, ...) \
+      ((level) == LOG_TRACE || g_trace_all ? \
+        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
+        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__))
+  #pragma clang diagnostic pop
+#else
+  // GCC and others
+  #define logger_log(level, fmt, ...) \
+      ((level) == LOG_TRACE || g_trace_all ? \
+        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
+        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__))
+#endif
+
+#else
+/*
+ * In non-debug builds, always use the standard logging function without
+ * file/line info.
+ */
+#if defined(_MSC_VER)
+  #define logger_log(level, fmt, ...) \
+      __pragma(warning(push)) \
+      __pragma(warning(disable:4003)) \
+      _logger_log(level, fmt, ##__VA_ARGS__) \
+      __pragma(warning(pop))
+#elif defined(__clang__)
+  #pragma clang diagnostic push
+  #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+  #define logger_log(level, fmt, ...) \
+      _logger_log(level, fmt, ##__VA_ARGS__)
+  #pragma clang diagnostic pop
+#else
+  #define logger_log(level, fmt, ...) \
+      _logger_log(level, fmt, ##__VA_ARGS__)
+#endif
+#endif
 
 #endif // LOGGER_H

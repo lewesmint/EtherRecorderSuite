@@ -42,9 +42,9 @@
 #define CONFIG_LOG_FILE_KEY "log_file_name"
 
 typedef struct ThreadLogFile {
-    char thread_label[MAX_PATH];
+    char thread_label[MAX_PATH_LEN];
     FILE *log_fp;
-    char log_file_name[MAX_PATH];
+    char log_file_name[MAX_PATH_LEN];
 } ThreadLogFile;
 
 typedef enum LogTimestampGranularity {
@@ -65,7 +65,7 @@ PlatformMutex_T logging_mutex; // Mutex for thread safety
 static ThreadLogFile thread_log_files[MAX_THREADS + 1]; // +1 for the main application log file
 
 // Replace Windows-specific timestamp types with platform-agnostic ones
-THREAD_LOCAL static int g_timestamp_initialised = 0;
+static THREAD_LOCAL int g_timestamp_initialised = 0;
 
 static LogTimestampGranularity g_log_timestamp_granularity = LOG_TS_NANOSECOND;  // Default
 static LogLevel g_log_level = LOG_DEBUG; // Current log level
@@ -80,12 +80,12 @@ static bool g_log_use_ansi_colours = false;
 static int g_thread_log_file_count = 0;
 
 // defaults if not read from the config file
-static char log_file_path[MAX_PATH] = "";             // Log file path
-static char log_file_name[MAX_PATH] = "log_file.log"; // Log file name
+static char log_file_path[MAX_PATH_LEN] = "";             // Log file path
+static char log_file_name[MAX_PATH_LEN] = "log_file.log"; // Log file name
 static off_t g_log_file_size = 10485760;                // Log file size before rotation
 
-// Thread-specific log file - use platform-agnostic thread local storage
-THREAD_LOCAL static char thread_log_file[MAX_PATH] = "";
+// // Thread-specific log file - use platform-agnostic thread local storage
+// THREAD_LOCAL static char thread_log_file[MAX_PATH_LEN] = "";
 
 static PlatformThread_T log_thread; // Logging thread
 static bool logging_thread_started = false; // indicate whether the logger thread has started
@@ -181,7 +181,7 @@ static const char* get_log_level_colour(LogLevel level) {
  * @param log_output The file pointer (typically stderr for screen output).
  */
 static void publish_log_entry(const LogEntry_T* entry, FILE* log_output) {
-    if (!entry || !entry->message) {
+    if (!entry || entry->message[0] == '\0') {
         fprintf(stderr, "Log Error: Attempted to log NULL or blank message\n");
         return;
     }
@@ -291,7 +291,7 @@ void set_log_thread_file(const char *label, const char *filename) {
  */
 void set_thread_log_file_from_config(const char* thread_label) {
 
-    char file_config_key[MAX_PATH];
+    char file_config_key[MAX_PATH_LEN];
     snprintf(file_config_key, sizeof(file_config_key), "%s." CONFIG_LOG_FILE_KEY, thread_label);
     const char* config_thread_log_file = get_config_string("logger", file_config_key, NULL);
     const char* config_thread_log_path = get_config_string("logger", CONFIG_LOG_PATH_KEY, NULL);
@@ -307,7 +307,7 @@ void set_thread_log_file_from_config(const char* thread_label) {
     /* Configure log file */
     if (config_thread_log_file) {
         if (config_thread_log_path) {
-            char full_log_file_name[MAX_PATH];
+            char full_log_file_name[MAX_PATH_LEN];
             construct_log_file_name(full_log_file_name, sizeof(full_log_file_name), config_thread_log_path, config_thread_log_file);
             set_log_thread_file(thread_label, full_log_file_name);
         }
@@ -357,7 +357,7 @@ static bool open_log_file_if_needed(ThreadLogFile *p_log_file) {
     static int log_failure_count = 0; // Counter for log failures
     static int directory_creation_failure_count = 0; // Counter for directory creation failures
 
-    char directory_path[MAX_PATH];
+    char directory_path[MAX_PATH_LEN];
 
     // Strip the directory path from the full file path
     strip_directory_path(p_log_file->log_file_name, directory_path, sizeof(directory_path));
@@ -459,13 +459,14 @@ LogOutput log_output_from_string(const char* destination_str, LogOutput default_
 static void log_immediately(const LogEntry_T* entry) {
     lock_mutex(&logging_mutex);
 
-    if (!entry || !entry->message) {
+    if (!entry || entry->message[0] == '\0') {
         fprintf(stderr, "Log Error: Attempted to log NULL or blank message\n");
         unlock_mutex(&logging_mutex);
         return;
     }
 
-    const char* thread_label = entry->thread_label ? entry->thread_label : get_thread_label();
+    const char* thread_label = entry && entry->thread_label[0] != '\0' ? 
+                              entry->thread_label : get_thread_label();
     ThreadLogFile* tlf = &thread_log_files[APP_LOG_FILE_INDEX];
 
     /* Rotate & open the main log file if needed */
@@ -508,7 +509,7 @@ void log_now(const LogEntry_T *entry) {
 }
 
 // Update safe_increment_index to use platform abstraction
-unsigned long long safe_increment_index() {
+unsigned long long safe_increment_index(void) {
     static volatile uint64_t log_index = 0;
     // Use platform-agnostic atomic increment
     return platform_atomic_increment_u64(&log_index);
@@ -528,6 +529,7 @@ void create_log_entry(LogEntry_T* entry, LogLevel level, const char* message) {
     strncpy(entry->message, message, sizeof(entry->message) - 1);
     entry->message[sizeof(entry->message) - 1] = '\0'; // Ensure null termination
 }
+
 
 void _logger_log(LogLevel level, const char* format, ...) {
     if (level < g_log_level) {
@@ -663,7 +665,7 @@ void logger_set_output(LogOutput output) {
 /**
  * @brief Closes the logger and releases resources.
  */
-void logger_close() {
+void logger_close(void) {
     lock_mutex(&logging_mutex);
     // Close all thread-specific log files
     for (int i = 0; i < g_thread_log_file_count; i++) {
