@@ -17,7 +17,7 @@ bool thread_registry_init(ThreadRegistry* registry) {
     registry->count = 0;
     
     if (platform_mutex_init(&registry->mutex) != 0) {
-        logger_log(LOG_ERROR, "Failed to initialize thread registry mutex");
+        logger_log(LOG_ERROR, "Failed to initialise thread registry mutex");
         return false;
     }
     
@@ -42,7 +42,7 @@ bool thread_registry_register(ThreadRegistry* registry, AppThread_T* thread, Thr
         return false;
     }
     
-    // Initialize the entry
+    // Initialise the entry
     entry->thread = thread;
     entry->state = THREAD_STATE_CREATED;
     entry->handle = handle;

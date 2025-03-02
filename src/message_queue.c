@@ -16,7 +16,7 @@ bool message_queue_init(MessageQueue_T* queue, uint32_t max_size) {
         return false;
     }
     
-    // Initialize head and tail indices
+    // Initialise head and tail indices
     queue->head = 0;
     queue->tail = 0;
     

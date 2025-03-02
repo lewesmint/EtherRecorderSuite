@@ -59,7 +59,7 @@ typedef struct PlatformCondition {
 } PlatformCondition_T;
 
 /**
- * @brief Initialize a platform mutex
+ * @brief Initialise a platform mutex
  * 
  * @param mutex Pointer to the mutex
  * @return int 0 on success, -1 on failure.

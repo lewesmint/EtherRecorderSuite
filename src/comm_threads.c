@@ -18,7 +18,7 @@ bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* 
     group->socket = socket;
     group->connection_closed = connection_closed;
     
-    // Initialize message queues
+    // Initialise message queues
     group->incoming_queue = (MessageQueue_T*)malloc(sizeof(MessageQueue_T));
     group->outgoing_queue = (MessageQueue_T*)malloc(sizeof(MessageQueue_T));
     
@@ -31,7 +31,7 @@ bool comms_thread_group_init(CommsThreadGroup* group, const char* name, SOCKET* 
     message_queue_init(group->incoming_queue, 0);  // No size limit
     message_queue_init(group->outgoing_queue, 0);  // No size limit
     
-    // Initialize base thread group
+    // Initialise base thread group
     return thread_group_init(&group->base, name);
 }
 
@@ -398,7 +398,7 @@ void* send_thread_function(void* arg) {
 }
 
 /**
- * @brief Initialize relay between communication endpoints
+ * @brief Initialise relay between communication endpoints
  */
 bool init_relay(
     CommArgs_T* client_args,

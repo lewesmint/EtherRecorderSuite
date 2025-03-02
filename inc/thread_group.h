@@ -23,9 +23,9 @@ typedef struct ThreadGroup {
 } ThreadGroup;
 
 /**
- * @brief Initialize a thread group
+ * @brief Initialise a thread group
  * 
- * @param group Pointer to the thread group to initialize
+ * @param group Pointer to the thread group to initialise
  * @param name Name of the thread group
  * @return bool true on success, false on failure
  */

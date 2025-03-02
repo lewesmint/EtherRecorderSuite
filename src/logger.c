@@ -148,9 +148,9 @@ LogLevel log_level_from_string(const char* level_str, LogLevel default_level) {
 
 
 /**
- * @brief Initializes the high-resolution timer for the current thread.
+ * @brief Initialises the high-resolution timer for the current thread.
  */
-// Function to initialize logger's timestamp system
+// Function to initialise logger's timestamp system
 void init_thread_timestamp_system(void) {
     // Replace Windows-specific code with platform abstraction
     platform_init_timestamp_system();
@@ -186,7 +186,7 @@ static void publish_log_entry(const LogEntry_T* entry, FILE* log_output) {
         return;
     }
 
-    /* Initialize the timestamp system for the current thread if not already initialized */
+    /* Initialise the timestamp system for the current thread if not already initialised */
     if (!g_timestamp_initialised) {
 		// This should never happen, the timeing system needs to be initialisedsome time
 		// before it is first useds or it will give a zero or negative offset when
@@ -196,7 +196,7 @@ static void publish_log_entry(const LogEntry_T* entry, FILE* log_output) {
 		// to avoid the zero/negative offset.
         init_thread_timestamp_system();
 		fprintf(stderr, "Log Error: Timestamp system  was not set prior initialised\n");
-        sleep(5);
+        sleep_ms(500);
     }
 
     /* Calculate calendar time from high-resolution timestamp */
@@ -566,7 +566,7 @@ void _logger_log(LogLevel level, const char* format, ...) {
 bool init_logger_from_config(char* logger_init_result) {
     bool success = true; // Assume success unless an issue occurs
 
-    /* Initialize and lock the mutex */
+    /* Initialise and lock the mutex */
     init_mutex(&logging_mutex);
     lock_mutex(&logging_mutex);
 
@@ -624,7 +624,7 @@ bool init_logger_from_config(char* logger_init_result) {
         sanitise_path(thread_log_files[APP_LOG_FILE_INDEX].log_file_name);
     }
 
-    /* Initialize log queue */
+    /* Initialise log queue */
     log_queue_init(&global_log_queue);
 
     /* Start logging thread regardless of success */

@@ -326,7 +326,7 @@
              snprintf(buffer, buffer_size, "Failed to detach thread");
              break;
          case PLATFORM_ERROR_MUTEX_INIT:
-             snprintf(buffer, buffer_size, "Failed to initialize mutex");
+             snprintf(buffer, buffer_size, "Failed to initialise mutex");
              break;
          case PLATFORM_ERROR_MUTEX_LOCK:
              snprintf(buffer, buffer_size, "Failed to lock mutex");
@@ -335,7 +335,7 @@
              snprintf(buffer, buffer_size, "Failed to unlock mutex");
              break;
          case PLATFORM_ERROR_CONDITION_INIT:
-             snprintf(buffer, buffer_size, "Failed to initialize condition variable");
+             snprintf(buffer, buffer_size, "Failed to initialise condition variable");
              break;
          case PLATFORM_ERROR_CONDITION_WAIT:
              snprintf(buffer, buffer_size, "Failed to wait on condition variable");

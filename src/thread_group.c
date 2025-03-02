@@ -20,11 +20,11 @@ bool thread_group_init(ThreadGroup* group, const char* name) {
     group->name[sizeof(group->name) - 1] = '\0';
     
     if (!thread_registry_init(&group->registry)) {
-        logger_log(LOG_ERROR, "Failed to initialize thread registry for group '%s'", name);
+        logger_log(LOG_ERROR, "Failed to initialise thread registry for group '%s'", name);
         return false;
     }
     
-    logger_log(LOG_DEBUG, "Thread group '%s' initialized", name);
+    logger_log(LOG_DEBUG, "Thread group '%s' initialised", name);
     return true;
 }
 

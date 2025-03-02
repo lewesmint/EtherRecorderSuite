@@ -134,7 +134,7 @@ bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initi
         return false;
     }
 #else
-    // Initialize mutex
+    // Initialise mutex
     pthread_mutexattr_t mutex_attr;
     pthread_mutexattr_init(&mutex_attr);
     pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
@@ -146,7 +146,7 @@ bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initi
     
     pthread_mutexattr_destroy(&mutex_attr);
     
-    // Initialize condition variable
+    // Initialise condition variable
     if (pthread_cond_init(&event->cond, NULL) != 0) {
         pthread_mutex_destroy(&event->mutex);
         return false;
@@ -386,7 +386,7 @@ bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initi
         return false;
     }
 #else
-    // Initialize mutex
+    // Initialise mutex
     pthread_mutexattr_t mutex_attr;
     pthread_mutexattr_init(&mutex_attr);
     pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
@@ -398,7 +398,7 @@ bool platform_event_create(PlatformEvent_T* event, bool manual_reset, bool initi
     
     pthread_mutexattr_destroy(&mutex_attr);
     
-    // Initialize condition variable
+    // Initialise condition variable
     if (pthread_cond_init(&event->cond, NULL) != 0) {
         pthread_mutex_destroy(&event->mutex);
         return false;

@@ -90,7 +90,7 @@ void* receive_thread_function(void* arg);
 void* send_thread_function(void* arg);
 
 /**
- * @brief Initialize relay functionality
+ * @brief Initialise relay functionality
  * 
  * Sets up message queues and establishes relay connections between
  * client and server threads.
@@ -141,7 +141,7 @@ typedef struct CommsThreadGroup {
 } CommsThreadGroup;
 
 /**
- * @brief Initialize a communication thread group
+ * @brief Initialise a communication thread group
  * 
  * @param group Pointer to the communication thread group
  * @param name Group name

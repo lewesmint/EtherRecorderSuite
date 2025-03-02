@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize the high-resolution timer for the current thread
+ * @brief Initialise the high-resolution timer for the current thread
  */
 void platform_init_timestamp_system(void);
 

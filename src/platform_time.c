@@ -79,7 +79,7 @@ uint32_t platform_get_tick_count(void) {
 static __thread struct {
     struct timespec sys_time_reference;
     struct timespec monotonic_reference;
-    int initialized;
+    int initialised;
 } g_timestamp_context = {0};
 
 void platform_init_timestamp_system(void) {
@@ -89,11 +89,11 @@ void platform_init_timestamp_system(void) {
     // Get system clock baseline (for calendar time)
     clock_gettime(CLOCK_REALTIME, &g_timestamp_context.sys_time_reference);
     
-    g_timestamp_context.initialized = 1;
+    g_timestamp_context.initialised = 1;
 }
 
 void platform_get_high_res_timestamp(PlatformHighResTimestamp_T* timestamp) {
-    if (!g_timestamp_context.initialized) {
+    if (!g_timestamp_context.initialised) {
         platform_init_timestamp_system();
     }
     

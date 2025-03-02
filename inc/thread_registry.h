@@ -47,9 +47,9 @@ typedef struct ThreadRegistry {
 } ThreadRegistry;
 
 /**
- * @brief Initialize a thread registry
+ * @brief Initialise a thread registry
  * 
- * @param registry Pointer to the registry to initialize
+ * @param registry Pointer to the registry to initialse
  * @return bool true on success, false on failure
  */
 bool thread_registry_init(ThreadRegistry* registry);

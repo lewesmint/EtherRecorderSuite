@@ -2,32 +2,32 @@
     "version": "0.2.0",
     "configurations": [
       {
-        "name": "Debug (win64)",
+        "name": "Debug (x64)",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/win64-debug/ClaudeEther.exe",
+        "program": "${workspaceFolder}/build/x64/Debug/ClaudeEther.exe",
         "args": [],
         "cwd": "${workspaceFolder}",
         "stopAtEntry": false,
         "console": "externalTerminal",
-        "preLaunchTask": "CMake: build (win64-debug)"
+        "preLaunchTask": "CMake: build (x64-debug)"
       },
       {
-        "name": "Release (win64)",
+        "name": "Release (x64)",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/win64-release/ClaudeEther.exe",
+        "program": "${workspaceFolder}/build/x64/Release/ClaudeEther.exe",
         "args": [],
         "cwd": "${workspaceFolder}",
         "stopAtEntry": false,
         "console": "externalTerminal",
-        "preLaunchTask": "CMake: build (win64-release)"
+        "preLaunchTask": "CMake: build (x64-release)"
       },
       {
         "name": "Debug (win32)",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/win32-debug/ClaudeEther.exe",
+        "program": "${workspaceFolder}/build/win32/Debug/ClaudeEther.exe",
         "args": [],
         "cwd": "${workspaceFolder}",
         "stopAtEntry": false,
@@ -38,7 +38,7 @@
         "name": "Release (win32)",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/win32-release/ClaudeEther.exe",
+        "program": "${workspaceFolder}/build/win32/Release/ClaudeEther.exe",
         "args": [],
         "cwd": "${workspaceFolder}",
         "stopAtEntry": false,

@@ -155,7 +155,7 @@ void* clientMainThread(void* arg) {
         // Create communication thread group
         CommsThreadGroup comms_group;
         if (!comms_thread_group_init(&comms_group, "CLIENT", &sock, &connection_closed_flag)) {
-            logger_log(LOG_ERROR, "Failed to initialize communication thread group");
+            logger_log(LOG_ERROR, "Failed to initialise communication thread group");
             close_socket(&sock);
             continue;
         }

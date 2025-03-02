@@ -22,25 +22,25 @@
 
 // Global thread registry
 static ThreadRegistry g_thread_registry;
-static bool g_registry_initialized = false;
+static bool g_registry_initialised = false;
 
 bool app_thread_init(void) {
-    if (g_registry_initialized) {
+    if (g_registry_initialised) {
         return true;
     }
     
     if (!thread_registry_init(&g_thread_registry)) {
-        fprintf(stderr, "Failed to initialize thread registry\n");
+        fprintf(stderr, "Failed to initialise thread registry\n");
         return false;
     }
     
-    g_registry_initialized = true;
+    g_registry_initialised = true;
     return true;
 }
 
 bool app_thread_wait_all(uint32_t timeout_ms) {
-    if (!g_registry_initialized) {
-        fprintf(stderr, "Thread registry not initialized\n");
+    if (!g_registry_initialised) {
+        fprintf(stderr, "Thread registry not initialised\n");
         return false;
     }
     
@@ -135,12 +135,12 @@ bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_la
 }
 
 void app_thread_cleanup(void) {
-    if (!g_registry_initialized) {
+    if (!g_registry_initialised) {
         return;
     }
     
     thread_registry_cleanup(&g_thread_registry);
-    g_registry_initialized = false;
+    g_registry_initialised = false;
 }
 
 
@@ -261,8 +261,8 @@ void* init_wait_for_logger(void* arg) {
 }
 
 bool app_thread_create(AppThread_T* thread) {
-    if (!g_registry_initialized) {
-        fprintf(stderr, "Thread registry not initialized\n");
+    if (!g_registry_initialised) {
+        fprintf(stderr, "Thread registry not initialised\n");
         return false;
     }
     
@@ -448,7 +448,7 @@ void start_threads(void) {
     platform_cond_init(&logger_thread_condition);
     platform_mutex_init(&logger_thread_mutex);
     
-    // Initialize thread registry
+    // Initialise thread registry
     if (!app_thread_init()) {
         fprintf(stderr, "Failed to initialize thread registry\n");
         return;
