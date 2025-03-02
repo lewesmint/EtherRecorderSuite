@@ -67,6 +67,12 @@ typedef struct AppThread_T {
     bool suppressed;                     ///< Suppress the thread
 } AppThread_T;
 
+// Thread start configuration
+typedef struct {
+    AppThread_T* thread;   // Pointer to thread structure
+    bool is_essential;     // If true, will log a warning when suppressed
+} ThreadStartInfo;
+
 /**
  * @brief Starts the threads based on the thread table.
  * @param threads The thread table.

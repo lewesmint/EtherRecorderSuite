@@ -66,7 +66,7 @@ void cleanup_sockets(void) {
 #endif
 }
 
-int platform_getsockopt(int sock, int level, int optname, void *optval, socklen_t *optlen) {
+int platform_getsockopt(SOCKET sock, int level, int optname, void *optval, socklen_t *optlen) {
 #ifdef _WIN32
     // On Windows, optlen is of type int
     int optlen_windows = (int)*optlen;
@@ -327,5 +327,30 @@ PlatformSocketError connect_with_timeout(SOCKET sock, struct sockaddr_in *server
     /* If connect() succeeded immediately. */
     restore_blocking_mode(sock);
     return PLATFORM_SOCKET_SUCCESS;
+}
+
+/**
+ * Checks if a socket connection is still healthy without sending or receiving data.
+ * This uses getsockopt() to check the socket error state.
+ * 
+ * @param sock The socket to check
+ * @return true if the socket appears healthy, false otherwise
+ */
+bool is_socket_healthy(SOCKET sock) {
+    if (sock == INVALID_SOCKET) {
+        return false;
+    }
+    
+    int error = 0;
+    socklen_t len = sizeof(error);
+    
+    // Use the cross-platform getsockopt wrapper
+    if (platform_getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len) != 0) {
+        // Failed to get socket option
+        return false;
+    }
+    
+    // If error is non-zero, the socket has some error condition
+    return (error == 0);
 }
 

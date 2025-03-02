@@ -88,7 +88,10 @@ bool app_thread_wait_all(uint32_t timeout_ms) {
     if (result == PLATFORM_WAIT_SUCCESS) {
         return true;
     } else if (result == PLATFORM_WAIT_TIMEOUT) {
-        logger_log(LOG_WARN, "Timeout waiting for threads to complete");
+        // Only log the timeout warning during shutdown, not during normal operation
+        if (shutdown_signalled()) {
+            logger_log(LOG_WARN, "Timeout waiting for threads to complete");
+        }
         return false;
     } else {
         char error_buf[256];
@@ -131,6 +134,7 @@ bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_la
     }
     
     free(list_copy);
+    logger_log(LOG_DEBUG, "Thread '%s' is %s", thread_label, suppressed ? "suppressed" : "not suppressed");
     return suppressed;
 }
 
@@ -143,11 +147,7 @@ void app_thread_cleanup(void) {
     g_registry_initialised = false;
 }
 
-
 extern bool shutdown_signalled(void);
-
-
-#define NUM_THREADS (sizeof(all_threads) / sizeof(all_threads[0]))
 
 static THREAD_LOCAL const char *thread_label = NULL;
 
@@ -378,7 +378,8 @@ AppThread_T client_thread = {
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
     .init_func = init_wait_for_logger,
-    .exit_func = exit_stub
+    .exit_func = exit_stub,
+    .suppressed=true
 };
 
 AppThread_T server_thread = {
@@ -388,7 +389,8 @@ AppThread_T server_thread = {
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
     .init_func = init_wait_for_logger,
-    .exit_func = exit_stub
+    .exit_func = exit_stub,
+    .suppressed=false
 };
 
 
@@ -399,7 +401,8 @@ AppThread_T command_interface_thread = {
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
     .init_func = init_wait_for_logger,
-    .exit_func = exit_stub
+    .exit_func = exit_stub,
+    .suppressed=true
 };
 
 AppThread_T logger_thread = {
@@ -411,37 +414,6 @@ AppThread_T logger_thread = {
     .init_func = init_stub,
     .exit_func = exit_stub
 };
-
-static AppThread_T* all_threads[] = {
-    &client_thread,
-    // &server_thread,
-    &server_receive_thread,
-    &server_send_thread,
-    &client_receive_thread,
-    &client_send_thread,
-    &command_interface_thread,
-    &logger_thread
-};
-
-void check_for_suppression(void) {
-    const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
-
-    char suppressed_list_copy[CONFIG_MAX_VALUE_LENGTH];
-    strncpy(suppressed_list_copy, suppressed_list, CONFIG_MAX_VALUE_LENGTH - 1);
-    suppressed_list_copy[CONFIG_MAX_VALUE_LENGTH - 1] = '\0';
-
-    char* context = NULL;
-    char* token = platform_strtok(suppressed_list_copy, ",", &context);
-
-    while (token != NULL) {
-        for (size_t i = 0; i < NUM_THREADS; i++) {
-            if (str_cmp_nocase(all_threads[i]->label, token) == 0) {
-                all_threads[i]->suppressed = true;
-            }
-        }
-        token = platform_strtok(NULL, ",", &context);
-    }
-}
 
 // Update start_threads:
 void start_threads(void) {
@@ -457,22 +429,34 @@ void start_threads(void) {
     // Get suppressed threads from configuration
     const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
     
-    // Create logger thread first (always required)
-    if (!app_thread_is_suppressed(suppressed_list, "LOGGER")) {
-        app_thread_create(&logger_thread);
-    }
+    // Define the thread launch configuration
+    ThreadStartInfo threads_to_start[] = {
+        { &logger_thread, true },      // Logger always starts first and is essential
+        { &client_thread, false },
+        { &server_thread, false },
+        { &command_interface_thread, false }
+        // Add other threads as needed
+    };
     
-    // Create other threads if not suppressed
-    if (!app_thread_is_suppressed(suppressed_list, "CLIENT")) {
-        app_thread_create(&client_thread);
-    }
-    
-    if (!app_thread_is_suppressed(suppressed_list, "SERVER")) {
-        app_thread_create(&server_thread);
-    }
-    
-    if (!app_thread_is_suppressed(suppressed_list, "COMMAND_INTERFACE")) {
-        app_thread_create(&command_interface_thread);
+    // Start each thread if not suppressed
+    for (size_t i = 0; i < sizeof(threads_to_start) / sizeof(threads_to_start[0]); i++) {
+        AppThread_T* thread = threads_to_start[i].thread;
+        bool is_essential = threads_to_start[i].is_essential;
+        
+        // Check if thread is suppressed either in its structure or in config
+        if (!thread->suppressed && !app_thread_is_suppressed(suppressed_list, thread->label)) {
+            app_thread_create(thread);
+            
+            // If this is the logger thread, give it time to initialize
+            if (strcmp(thread->label, "LOGGER") == 0) {
+                sleep_ms(100);  // Brief pause to ensure logger is ready
+            }
+        } else if (is_essential) {
+            fprintf(stderr, "WARNING: Essential thread '%s' is suppressed. This may cause issues.\n", 
+                    thread->label);
+        } else {
+            logger_log(LOG_DEBUG, "Thread '%s' is suppressed - not starting", thread->label);
+        }
     }
 }
 

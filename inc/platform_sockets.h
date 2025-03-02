@@ -75,7 +75,7 @@ void initialise_sockets(void);
  */
 void cleanup_sockets(void);
 
-int platform_getsockopt(int sock, int level, int optname, void *optval, socklen_t *optlen);
+int platform_getsockopt(SOCKET sock, int level, int optname, void *optval, socklen_t *optlen);
 
 void get_socket_error_message(char* buffer, size_t buffer_size);
 
@@ -124,6 +124,15 @@ const char* socket_error_string(void);
 
 SOCKET setup_socket(bool is_server, bool is_tcp, struct sockaddr_in *addr, struct sockaddr_in *client_addr, const char *host, uint16_t port);
 PlatformSocketError connect_with_timeout(SOCKET sock, struct sockaddr_in *server_addr, int timeout_seconds);
+
+
+/**
+ * Checks if a socket connection is still healthy without sending or receiving data.
+ * 
+ * @param sock The socket to check
+ * @return true if the socket appears healthy, false otherwise
+ */
+bool is_socket_healthy(SOCKET sock);
 
 
 #ifdef __cplusplus

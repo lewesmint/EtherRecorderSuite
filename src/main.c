@@ -88,8 +88,8 @@ static AppError init_app() {
         printf("Failed to initialise logger: %s\n", logger_init_result);
         return APP_LOGGER_ERROR;
     }
-//    logger_log(LOG_INFO, "Configuration: %s", config_load_result);
-//    logger_log(LOG_INFO, "Logger: %s", logger_init_result);
+    logger_log(LOG_INFO, "Configuration: %s", config_load_result);
+    logger_log(LOG_INFO, "Logger: %s", logger_init_result);
 
     /* Initialise sockets (WSAStartup on Windows, etc.) */
     initialise_sockets();

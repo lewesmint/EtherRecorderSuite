@@ -176,7 +176,10 @@ bool thread_group_terminate_all(ThreadGroup* group, uint32_t timeout_ms) {
         logger_log(LOG_DEBUG, "All threads in group '%s' terminated", group->name);
         return true;
     } else if (result == PLATFORM_WAIT_TIMEOUT) {
-        logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to terminate", group->name);
+        // Only log timeout warning during shutdown
+        if (shutdown_signalled()) {
+            logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to terminate", group->name);
+        }
         return false;
     } else {
         char error_msg[256];
@@ -248,7 +251,10 @@ bool thread_group_wait_all(ThreadGroup* group, uint32_t timeout_ms) {
         logger_log(LOG_DEBUG, "All threads in group '%s' completed", group->name);
         return true;
     } else if (result == PLATFORM_WAIT_TIMEOUT) {
-        logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to complete", group->name);
+        // Only log timeout warning during shutdown
+        if (shutdown_signalled()) {
+            logger_log(LOG_WARN, "Timeout waiting for threads in group '%s' to complete", group->name);
+        }
         return false;
     } else {
         char error_msg[256];

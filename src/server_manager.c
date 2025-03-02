@@ -169,21 +169,39 @@ void* serverListenerThread(void* arg) {
         }
         
         // Wait for communication threads or shutdown
-        int retry_count = 0;
+        int health_check_retries = 0;
+        bool monitoring_connection_health = false;
+
         while (!shutdown_signalled() && !comms_thread_group_is_closed(&comms_group)) {
-            logger_log(LOG_DEBUG, "SERVER: Waiting for send and receive threads");
+            logger_log(LOG_DEBUG, "SERVER: Monitoring active connection");
             
             bool threads_completed = comms_thread_group_wait(&comms_group, thread_wait_timeout);
             if (threads_completed) {
+                logger_log(LOG_INFO, "Communication threads completed, ending session");
                 break;
             }
             
-            // Prevent infinite waiting if threads are stuck
-            retry_count++;
-            int retry_limit = get_config_int("network", "server.thread_retry_limit", DEFAULT_LISTEN_RETRY_LIMIT);
-            if (retry_limit > 0 && retry_count >= retry_limit) {
-                logger_log(LOG_ERROR, "Exceeded retry limit (%d) waiting for threads, forcing cleanup", retry_limit);
-                break;
+            // Only track retry counts when we're monitoring connection health
+            if (monitoring_connection_health) {
+                health_check_retries++;
+                int retry_limit = get_config_int("network", "server.thread_retry_limit", DEFAULT_LISTEN_RETRY_LIMIT);
+                if (retry_limit > 0 && health_check_retries >= retry_limit) {
+                    logger_log(LOG_ERROR, "Exceeded retry limit (%d) for connection health checks, forcing cleanup", retry_limit);
+                    break;
+                }
+            }
+            
+            // Check if the socket is still healthy
+            if (comms_thread_has_activity(&comms_group)) {
+                // Socket is healthy, reset monitoring state
+                health_check_retries = 0;
+                monitoring_connection_health = false;
+            } else {
+                // Socket appears unhealthy, start monitoring more carefully
+                if (!monitoring_connection_health) {
+                    logger_log(LOG_WARN, "Connection health check failed, monitoring for recovery");
+                }
+                monitoring_connection_health = true;
             }
         }
         

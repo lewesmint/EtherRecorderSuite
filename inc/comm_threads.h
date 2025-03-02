@@ -28,6 +28,36 @@ typedef enum {
     RELAY_MODE_FILTER       // Filter messages according to rules
 } RelayMode;
 
+// /**
+//  * @brief Structure for client and server communication arguments
+//  * 
+//  * This structure contains all the information needed for send and receive
+//  * threads to communicate over a socket.
+//  */
+// typedef struct {
+//     SOCKET* sock;                  // Pointer to socket (allows updating from owner thread)
+//     struct sockaddr_in client_addr; // Client address information
+//     void* thread_info;             // Could be ClientThreadArgs_T or ServerThreadArgs_T
+//     volatile long* connection_closed; // Atomic flag indicating connection state
+    
+//     // Relay functionality
+//     MessageQueue_T* incoming_queue; // Queue for incoming messages to be processed
+//     MessageQueue_T* outgoing_queue; // Queue for outgoing messages to be sent
+//     RelayMode relay_mode;          // Relay operation mode
+//     bool disconnect_on_peer_close; // Whether to disconnect when the other side disconnects
+// } CommArgs_T;
+
+/**
+ * @brief Communication thread group for managing send/receive threads
+ */
+typedef struct CommsThreadGroup {
+    ThreadGroup base;                 // Base thread group
+    SOCKET* socket;                   // Socket pointer (owned by parent thread)
+    volatile long* connection_closed; // Connection closed flag (owned by parent thread)
+    MessageQueue_T* incoming_queue;   // Queue for incoming messages
+    MessageQueue_T* outgoing_queue;   // Queue for outgoing messages
+} CommsThreadGroup;
+
 /**
  * @brief Structure for client and server communication arguments
  * 
@@ -38,7 +68,9 @@ typedef struct {
     SOCKET* sock;                  // Pointer to socket (allows updating from owner thread)
     struct sockaddr_in client_addr; // Client address information
     void* thread_info;             // Could be ClientThreadArgs_T or ServerThreadArgs_T
-    volatile long* connection_closed; // Atomic flag indicating connection state
+    
+    // Communication group reference for status management
+    CommsThreadGroup* comm_group;  // Pointer to the parent communication group
     
     // Relay functionality
     MessageQueue_T* incoming_queue; // Queue for incoming messages to be processed
@@ -129,16 +161,6 @@ Message_T create_message(const char* buffer, uint32_t length, MessageType msg_ty
  */
 bool transform_message(Message_T* message, RelayMode mode);
 
-/**
- * @brief Communication thread group for managing send/receive threads
- */
-typedef struct CommsThreadGroup {
-    ThreadGroup base;              // Base thread group
-    SOCKET* socket;                // Socket pointer (owned by parent thread)
-    volatile long* connection_closed; // Connection closed flag (owned by parent thread)
-    MessageQueue_T* incoming_queue; // Queue for incoming messages
-    MessageQueue_T* outgoing_queue; // Queue for outgoing messages
-} CommsThreadGroup;
 
 /**
  * @brief Initialise a communication thread group
@@ -192,4 +214,12 @@ bool comms_thread_group_wait(CommsThreadGroup* group, uint32_t timeout_ms);
  */
 void comms_thread_group_cleanup(CommsThreadGroup* group);
 
+
+/**
+ * Checks if the communication threads show signs of activity or if the connection is alive.
+ * 
+ * @param group Pointer to the communication thread group
+ * @return true if the connection shows signs of being active/healthy, false otherwise
+ */
+bool comms_thread_has_activity(CommsThreadGroup* group);
 #endif // COMM_THREADS_H
