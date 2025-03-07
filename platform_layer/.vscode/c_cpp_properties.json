@@ -1,0 +1,37 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/inc",
+                "${workspaceFolder}/posix/inc",
+                "${workspaceFolder}/macos/inc",
+                "${workspaceFolder}/**"
+            ],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/inc",
+                    "${workspaceFolder}/posix/inc",
+                    "${workspaceFolder}/macos/inc",
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": false,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            },
+            "cStandard": "c23",
+            "compilerPath": "/usr/bin/clang",
+            "intelliSenseMode": "macos-clang-arm64",
+            "cppStandard": "c++23",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "defines": [
+                "true=1",
+                "false=0"
+            ]
+        }
+    ],
+    "version": 4
+}

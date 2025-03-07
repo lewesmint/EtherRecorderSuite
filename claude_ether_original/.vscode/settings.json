@@ -1,0 +1,24 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.default.cStandard": "c23",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/inc"
+    ],
+    "C_Cpp.default.defines": [
+        "_WIN32_WINNT=0x0600",
+        "NOMINMAX",
+        "WIN32_LEAN_AND_MEAN",
+        "_CRT_SECURE_NO_WARNINGS",
+        "_CRT_SECURE_NO_DEPRECATE"
+    ],
+    "cmake.buildDirectory": "${workspaceFolder}/build/${variant:buildType}",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.configureOnOpen": true,
+    "cmake.exportCompileCommandsFile": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "C_Cpp.default.compilerPath": "/usr/bin/clang",
+    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+    "terminal.integrated.cwd": "${workspaceFolder}"
+}

@@ -1,0 +1,55 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "MacOS ARM64 (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/macos-arm64/Debug/platform_layer_test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "CMake: build (macos-arm64-debug)"
+        },
+        {
+            "name": "MacOS ARM64 (Release)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/macos-arm64/Release/platform_layer_test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "CMake: build (macos-arm64-release)"
+        },
+        // {
+        //     "name": "Windows x64 (Debug)",
+        //     "type": "cppvsdbg",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/build/x64/Debug/platform_layer_test.exe",
+        //     "args": [],
+        //     "stopAtEntry": false,
+        //     "cwd": "${workspaceFolder}",
+        //     "environment": [],
+        //     "console": "integratedTerminal",
+        //     "preLaunchTask": "CMake: build (x64-debug)"
+        // },
+        // {
+        //     "name": "Windows x64 (Release)",
+        //     "type": "cppvsdbg",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/build/x64/Release/platform_layer_test.exe",
+        //     "args": [],
+        //     "stopAtEntry": false,
+        //     "cwd": "${workspaceFolder}",
+        //     "environment": [],
+        //     "console": "integratedTerminal",
+        //     "preLaunchTask": "CMake: build (x64-release)"
+        // }
+    ]
+}

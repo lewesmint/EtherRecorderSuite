@@ -1,0 +1,12 @@
+{
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.default.cStandard": "c23",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cmake.configureOnOpen": true,
+    "cmake.exportCompileCommandsFile": true,
+    "cmake.buildDirectory": "${workspaceFolder}/build/${variant:buildType}",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "C_Cpp.default.compilerPath": "/usr/bin/clang",
+    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64"
+}
