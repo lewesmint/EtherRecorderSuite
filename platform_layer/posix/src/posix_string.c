@@ -32,14 +32,14 @@ size_t platform_strcat(char* dest, const char* src, size_t size) {
     return dest_len + to_copy;
 }
 
-int platform_strcasecmp(const char* str1, const char* str2) {
+int strcmp_nocase(const char* str1, const char* str2) {
     if (!str1 || !str2) {
         return str1 ? 1 : (str2 ? -1 : 0);
     }
     return strcasecmp(str1, str2);
 }
 
-int platform_strncasecmp(const char* str1, const char* str2, size_t n) {
+int strncmp_nocase(const char* str1, const char* str2, size_t n) {
     if (!str1 || !str2) {
         return str1 ? 1 : (str2 ? -1 : 0);
     }

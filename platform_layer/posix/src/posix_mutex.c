@@ -145,3 +145,16 @@ PlatformErrorCode platform_cond_destroy(PlatformCondition_T* cond) {
     return pthread_cond_destroy(posix_cond(cond)) == 0 ? 
            PLATFORM_ERROR_SUCCESS : PLATFORM_ERROR_CONDITION_SIGNAL;
 }
+
+int init_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_init(mutex);
+}
+
+int lock_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_lock(mutex);
+}
+
+int unlock_mutex(PlatformMutex_T *mutex) {
+    return platform_mutex_unlock(mutex);
+}
+

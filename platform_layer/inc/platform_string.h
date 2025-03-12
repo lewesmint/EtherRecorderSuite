@@ -15,16 +15,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Safe string copy with size limit
- * @param[out] dest Destination buffer
- * @param[in] src Source string
- * @param[in] size Size of destination buffer
- * @return Number of characters copied (excluding null terminator)
- * @note Always null terminates if size > 0
- */
-size_t platform_strcpy(char* dest, const char* src, size_t size);
-
-/**
  * @brief Safe string concatenation with size limit
  * @param[in,out] dest Destination buffer
  * @param[in] src Source string
@@ -40,7 +30,7 @@ size_t platform_strcat(char* dest, const char* src, size_t size);
  * @param[in] str2 Second string
  * @return 0 if equal, <0 if str1 < str2, >0 if str1 > str2
  */
-int platform_strcasecmp(const char* str1, const char* str2);
+int strcmp_nocase(const char* str1, const char* str2);
 
 /**
  * @brief Case-insensitive string comparison with length limit
@@ -49,7 +39,7 @@ int platform_strcasecmp(const char* str1, const char* str2);
  * @param[in] n Maximum number of characters to compare
  * @return 0 if equal, <0 if str1 < str2, >0 if str1 > str2
  */
-int platform_strncasecmp(const char* str1, const char* str2, size_t n);
+int strncmp_nocase(const char* str1, const char* str2, size_t n);
 
 /**
  * @brief Thread-safe tokenization function (strtok replacement)

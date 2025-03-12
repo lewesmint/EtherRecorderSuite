@@ -1,85 +1,120 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "CMake: build (macos-arm64-debug)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "macos-arm64-debug"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake: build (macos-arm64-release)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "macos-arm64-release"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake: build (win32-debug)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "win32-debug"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake: build (win32-release)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "win32-release"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake: build (x64-debug)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "x64-debug"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake: build (x64-release)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "--preset",
-        "x64-release"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "type": "cmake",
-      "label": "CMake: configure",
-      "command": "configure",
-      "preset": "${command:cmake.activeConfigurePresetName}",
-      "problemMatcher": [],
-      "detail": "CMake template configure task"
-    }
-  ]
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: configure (macos-arm64-debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "macos-arm64-debug"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (macos-arm64-debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "macos-arm64-debug"
+            ],
+            "group": "build",
+            "dependsOn": [
+                "CMake: configure (macos-arm64-debug)"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (macos-arm64-release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "macos-arm64-release"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (win32-debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "win32-debug"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (win32-release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "win32-release"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (x64-debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "x64-debug"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build (x64-release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "x64-release"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: configure",
+            "command": "configure",
+            "preset": "${command:cmake.activeConfigurePresetName}",
+            "problemMatcher": [],
+            "detail": "CMake template configure task"
+        },
+        {
+            "type": "cppbuild",
+            "label": "C/C++: clang build active file",
+            "command": "/usr/bin/clang",
+            "args": [
+                "-fcolor-diagnostics",
+                "-fansi-escape-codes",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build",
+            "detail": "Task generated by Debugger."
+        }
+    ]
 }

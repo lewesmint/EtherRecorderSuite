@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <limits.h>
 
 #include "platform_error.h"
 
@@ -14,15 +15,19 @@
 extern "C" {
 #endif
 
-/**
- * @brief Maximum path length for the current platform
- */
-extern const size_t PLATFORM_MAX_PATH_LENGTH;
+#ifndef MAX_PATH_LEN
+#ifdef MAX_PATH
+#define MAX_PATH_LEN MAX_PATH
+#else
+#define MAX_PATH_LEN PATH_MAX
+#endif
+#endif
+
 
 /**
  * @brief Platform-specific path separator character
  */
-extern const char PLATFORM_PATH_SEPARATOR;
+extern const char PATH_SEPARATOR;
 
 /**
  * @brief Get the current working directory
@@ -121,6 +126,8 @@ bool platform_path_is_absolute(const char* path);
  * @return PlatformErrorCode indicating success or failure
  */
 PlatformErrorCode platform_path_to_native(char* path);
+
+int platform_mkdir(const char* path);
 
 #ifdef __cplusplus
 }

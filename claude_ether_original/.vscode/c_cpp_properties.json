@@ -9,13 +9,11 @@
                 "${workspaceFolder}/**"
             ],
             "defines": [
-                "_WIN32_WINNT=0x0600",
-                "NOMINMAX",
-                "WIN32_LEAN_AND_MEAN",
-                "_CRT_SECURE_NO_WARNINGS",
-                "_CRT_SECURE_NO_DEPRECATE"
+                "true=1",
+                "false=0",
+                "__STDC_VERSION__=201710L"
             ],
-            "cStandard": "c23",
+            "cStandard": "c17",
             "macFrameworkPath": [
                 "/System/Library/Frameworks",
                 "/Library/Frameworks"
@@ -28,15 +26,9 @@
                 "limitSymbolsToIncludedHeaders": false,
                 "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
             },
-            "cStandard": "c23",
-            "compilerPath": "/usr/bin/clang",
-            "intelliSenseMode": "macos-clang-arm64",
             "cppStandard": "c++23",
             "configurationProvider": "ms-vscode.cmake-tools",
-            "defines": [
-                "true=1",
-                "false=0"
-            ]
+            "compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json"
         }
     ],
     "version": 4

@@ -98,7 +98,7 @@ void* serverListenerThread(void* arg) {
     // Load configuration
     uint16_t port = get_config_uint16("network", "server.port", server_info->port);
     bool is_tcp = get_config_bool("network", "server.is_tcp", server_info->is_tcp);
-    int thread_wait_timeout = get_config_int("network", "server.thread_wait_timeout_ms", DEFAULT_THREAD_WAIT_TIMEOUT_MS);
+    // int thread_wait_timeout = get_config_int("network", "server.thread_wait_timeout_ms", DEFAULT_THREAD_WAIT_TIMEOUT_MS);
     
     logger_log(LOG_INFO, "Server Manager starting on port: %d, protocol: %s", 
                port, is_tcp ? "TCP" : "UDP");
@@ -159,36 +159,37 @@ void* serverListenerThread(void* arg) {
         logger_log(LOG_INFO, "Client connected from %s:%d", client_ip, ntohs(client_addr.sin_port));
         
         // Create a flag for tracking connection state
-        volatile long connection_closed_flag = 0;
+        // volatile long connection_closed_flag = 0;
         
         // Create communication thread group
-        CommsThreadGroup comms_group;
-        if (!comms_thread_group_init(&comms_group, "SERVER_CLIENT", &client_sock, &connection_closed_flag)) {
-            logger_log(LOG_ERROR, "Failed to initialise communication thread group");
-            close_socket(&client_sock);
-            continue;
-        }
+        // CommsThreadGroup comms_group;
+        // if (!comms_thread_group_init(&comms_group, "SERVER_CLIENT", &client_sock, &connection_closed_flag)) {
+        //     logger_log(LOG_ERROR, "Failed to initialise communication thread group");
+        //     close_socket(&client_sock);
+        //     continue;
+        // }
         
-        // Create communication threads
-        if (!comms_thread_group_create_threads(&comms_group, &client_addr, server_info)) {
-            logger_log(LOG_ERROR, "Failed to create communication threads");
-            comms_thread_group_cleanup(&comms_group);
-            close_socket(&client_sock);
-            continue;
-        }
+        // // Create communication threads
+        // if (!comms_thread_group_create_threads(&comms_group, &client_addr, server_info)) {
+        //     logger_log(LOG_ERROR, "Failed to create communication threads");
+        //     comms_thread_group_cleanup(&comms_group);
+        //     close_socket(&client_sock);
+        //     continue;
+        // }
         
         // Wait for communication threads or shutdown
         int health_check_retries = 0;
         bool monitoring_connection_health = false;
 
-        while (!shutdown_signalled() && !comms_thread_group_is_closed(&comms_group)) {
+        while (!shutdown_signalled()) {
+        // while (!shutdown_signalled() && !comms_thread_group_is_closed(&comms_group)) {
             logger_log(LOG_DEBUG, "SERVER: Monitoring active connection");
             
-            bool threads_completed = comms_thread_group_wait(&comms_group, thread_wait_timeout);
-            if (threads_completed) {
-                logger_log(LOG_INFO, "Communication threads completed, ending session");
-                break;
-            }
+            // bool threads_completed = comms_thread_group_wait(&comms_group, thread_wait_timeout);
+            // if (threads_completed) {
+            //     logger_log(LOG_INFO, "Communication threads completed, ending session");
+            //     break;
+            // }
             
             // Only track retry counts when we're monitoring connection health
             if (monitoring_connection_health) {
@@ -201,7 +202,8 @@ void* serverListenerThread(void* arg) {
             }
             
             // Check if the socket is still healthy
-            if (comms_thread_has_activity(&comms_group)) {
+            if (true) {
+            // if (comms_thread_has_activity(&comms_group)) {
                 // Socket is healthy, reset monitoring state
                 health_check_retries = 0;
                 monitoring_connection_health = false;
@@ -215,7 +217,7 @@ void* serverListenerThread(void* arg) {
         }
         
         // Clean up
-        comms_thread_group_cleanup(&comms_group);
+        // comms_thread_group_cleanup(&comms_group);
         
         // Close the client socket
         logger_log(LOG_INFO, "Closing client socket");

@@ -23,35 +23,54 @@
 #include "comm_threads.h"
 
 
-// Global thread registry
-static ThreadRegistry g_thread_registry;
-static bool g_registry_initialised = false;
+extern bool g_registry_initialized;
+
+extern bool shutdown_signalled(void);
+
+extern volatile bool logger_ready;
+
+static THREAD_LOCAL const char *thread_label = NULL;
+
+extern AppThread_T server_send_thread;
+extern AppThread_T server_receive_thread;
+extern AppThread_T client_send_thread;
+extern AppThread_T client_receive_thread;
+
+// Replace these Windows-specific declarations:
+static PlatformCondition_T logger_thread_condition;
+static PlatformMutex_T logger_thread_mutex;
+
+typedef enum WaitResult {
+    APP_WAIT_SUCCESS = 0,
+    APP_WAIT_TIMEOUT = 1,
+    APP_WAIT_ERROR = -1
+} WaitResult;
 
 bool app_thread_init(void) {
-    if (g_registry_initialised) {
+    if (g_registry_initialized) {
         return true;
     }
     
-    if (!thread_registry_init(&g_thread_registry)) {
-        stream_print(stderr, "Failed to initialise thread registry\n");
+    if (!init_global_thread_registry()) {
         return false;
     }
     
-    g_registry_initialised = true;
+    g_registry_initialized = true;
     return true;
 }
 
 bool app_thread_wait_all(uint32_t timeout_ms) {
-    if (!g_registry_initialised) {
+    if (!g_registry_initialized) {
         stream_print(stderr, "Thread registry not initialised\n");
         return false;
     }
     
-    platform_mutex_lock(&g_thread_registry.mutex);
+    ThreadRegistry* registry = get_thread_registry();
+    platform_mutex_lock(&registry->mutex);
     
     // Count active threads and collect handles
     uint32_t active_count = 0;
-    ThreadRegistryEntry* entry = g_thread_registry.head;
+    ThreadRegistryEntry* entry = registry->head;
     while (entry != NULL) {
         if (entry->state != THREAD_STATE_TERMINATED) {
             active_count++;
@@ -60,21 +79,21 @@ bool app_thread_wait_all(uint32_t timeout_ms) {
     }
     
     if (active_count == 0) {
-        platform_mutex_unlock(&g_thread_registry.mutex);
+        platform_mutex_unlock(&registry->mutex);
         return true;
     }
     
     // Allocate handles array
     ThreadHandle_T* handles = (ThreadHandle_T*)malloc(active_count * sizeof(ThreadHandle_T));
     if (!handles) {
-        platform_mutex_unlock(&g_thread_registry.mutex);
+        platform_mutex_unlock(&registry->mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
         return false;
     }
     
     // Collect handles
     uint32_t i = 0;
-    entry = g_thread_registry.head;
+    entry = registry->head;
     while (entry != NULL && i < active_count) {
         if (entry->state != THREAD_STATE_TERMINATED) {
             handles[i++] = entry->handle;
@@ -82,7 +101,7 @@ bool app_thread_wait_all(uint32_t timeout_ms) {
         entry = entry->next;
     }
     
-    platform_mutex_unlock(&g_thread_registry.mutex);
+    platform_mutex_unlock(&registry->mutex);
     
     // Wait for all threads
     int result = platform_thread_wait_multiple(handles, active_count, true, timeout_ms);
@@ -142,33 +161,14 @@ bool app_thread_is_suppressed(const char* suppressed_list, const char* thread_la
 }
 
 void app_thread_cleanup(void) {
-    if (!g_registry_initialised) {
+    if (!g_registry_initialized) {
         return;
     }
     
-    thread_registry_cleanup(&g_thread_registry);
-    g_registry_initialised = false;
+    ThreadRegistry* registry = get_thread_registry();
+    thread_registry_cleanup(registry);
+    g_registry_initialized = false;
 }
-
-extern bool shutdown_signalled(void);
-
-static THREAD_LOCAL const char *thread_label = NULL;
-
-extern AppThread_T server_send_thread;
-extern AppThread_T server_receive_thread;
-extern AppThread_T client_send_thread;
-extern AppThread_T client_receive_thread;
-
-// Replace these Windows-specific declarations:
-static PlatformCondition_T logger_thread_condition;
-static PlatformMutex_T logger_thread_mutex;
-volatile bool logger_ready = false;
-
-typedef enum WaitResult {
-    APP_WAIT_SUCCESS = 0,
-    APP_WAIT_TIMEOUT = 1,
-    APP_WAIT_ERROR = -1
-} WaitResult;
 
 void* app_thread(AppThread_T* thread_args) {
     if (thread_args->init_func) {
@@ -255,7 +255,7 @@ void* init_wait_for_logger(void* arg) {
 }
 
 bool app_thread_create(AppThread_T* thread) {
-    if (!g_registry_initialised) {
+    if (!g_registry_initialized) {
         stream_print(stderr, "Thread registry not initialised\n");
         return false;
     }
@@ -264,8 +264,10 @@ bool app_thread_create(AppThread_T* thread) {
         return false;
     }
     
+    ThreadRegistry* registry = get_thread_registry();
+    
     // Check if the thread is already registered
-    if (thread_registry_is_registered(&g_thread_registry, thread)) {
+    if (thread_registry_is_registered(registry, thread)) {
         logger_log(LOG_WARN, "Thread '%s' is already registered", thread->label);
         return false;
     }
@@ -296,13 +298,13 @@ bool app_thread_create(AppThread_T* thread) {
     }
     
     // Register the thread
-    if (!thread_registry_register(&g_thread_registry, thread, thread_handle, true)) {
+    if (!thread_registry_register(registry, thread, thread_handle, true)) {
         logger_log(LOG_ERROR, "Failed to register thread '%s'", thread->label);
         return false;
     }
     
     // Update thread state
-    thread_registry_update_state(&g_thread_registry, thread, THREAD_STATE_RUNNING);
+    thread_registry_update_state(registry, thread, THREAD_STATE_RUNNING);
     
     return true;
 }
@@ -342,26 +344,51 @@ void* logger_thread_function(void* arg) {
     return NULL;
 }
 
-static char test_send_data [1000];
 
-static CommsThreadArgs_T client_thread_args = {
-    .server_hostname = "127.0.0.2",
-    .send_test_data = false,
-    .data = &test_send_data,
-    .data_size = sizeof(test_send_data),
-    .send_interval_ms = 2000,
-    .port = 4200,
-    .is_tcp = true
+// static CommContext client_context = {
+//     .socket = NULL,              // Will be set during initialization
+//     .connection_closed = 0,
+//     .group_id = 0,              // Will be set during initialization
+//     .is_tcp = true,
+//     .is_relay_enabled = false
+// };
+
+// static CommContext server_context = {
+//     .socket = NULL,              // Will be set during initialization
+//     .connection_closed = 0,
+//     .group_id = 0,              // Will be set during initialization
+//     .is_tcp = true,
+//     .is_relay_enabled = false
+// };
+
+// static CommsArgs_T client_thread_args = {
+//     .context = &client_context,
+//     .thread_info = NULL,        // Additional info if needed
+//     .queue = NULL,              // Will be set during thread creation
+//     .thread_id = 0              // Will be set during thread creation
+// };
+
+// static CommsArgs_T server_thread_args = {
+//     .context = &server_context,
+//     .thread_info = NULL,        // Additional info if needed
+//     .queue = NULL,              // Will be set during thread creation
+//     .thread_id = 0              // Will be set during thread creation
+// };
+
+
+ClientCommsThreadArgs_T client_thread_args = {
+    .server_hostname = "localhost",                  ///< Server hostname or IP address
+    .comm_args.port =4199,                           ///< Port number
+    .comm_args.send_test_data = true,                ///< Send test data flag
+    .comm_args.send_interval_ms = 1000,              ///< Send interval
+    .comm_args.data_size = 1000                      ///< Data size
 };
 
-static CommsThreadArgs_T server_thread_args = {
-    .server_hostname = "0.0.0.0",
-    .send_test_data = false,
-    .data = &test_send_data,
-    .data_size = sizeof(test_send_data),
-    .send_interval_ms = 2000,
-    .port = 4150,
-    .is_tcp = true
+CommsThreadArgs_T server_thread_args = {
+    .port =4199,                           ///< Port number
+    .send_test_data = true,                ///< Send test data flag
+    .send_interval_ms = 1000,               ///< Send interval
+    .data_size = 1000                      ///< Data size
 };
 
 
@@ -455,7 +482,65 @@ void start_threads(void) {
 }
 
 bool wait_for_all_threads_to_complete(int time_ms) {
-    return app_thread_wait_all(time_ms);
+    (void)time_ms;
+    if (!g_registry_initialized) {
+        stream_print(stderr, "Thread registry not initialised\n");
+        return false;
+    }
+
+    ThreadRegistry* registry = get_thread_registry();
+    platform_mutex_lock(&registry->mutex);
+
+    // Add debug logging
+    logger_log(LOG_DEBUG, "Waiting for threads to complete. Registry count: %d", registry->count);
+
+    // Count active threads and collect handles
+    uint32_t active_count = 0;
+    ThreadRegistryEntry* entry = registry->head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            active_count++;
+            logger_log(LOG_DEBUG, "Active thread found: %s", 
+                      entry->thread->label ? entry->thread->label : "unnamed");
+        }
+        entry = entry->next;
+    }
+
+    if (active_count == 0) {
+        logger_log(LOG_DEBUG, "No active threads found");
+        platform_mutex_unlock(&registry->mutex);
+        return true;
+    }
+
+    logger_log(LOG_DEBUG, "Waiting for %d active threads", active_count);
+
+    // Wait for threads to complete
+    bool all_complete = true;
+    entry = registry->head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            void* thread_result;
+            logger_log(LOG_DEBUG, "Joining thread: %s", 
+                      entry->thread->label ? entry->thread->label : "unnamed");
+            
+            int join_result = platform_thread_join(entry->handle, &thread_result);
+            if (join_result != 0) {
+                logger_log(LOG_ERROR, "Failed to join thread %s (error: %d)", 
+                          entry->thread->label ? entry->thread->label : "unnamed",
+                          join_result);
+                all_complete = false;
+                break;
+            }
+            logger_log(LOG_DEBUG, "Successfully joined thread: %s", 
+                      entry->thread->label ? entry->thread->label : "unnamed");
+        }
+        entry = entry->next;
+    }
+
+    platform_mutex_unlock(&registry->mutex);
+    logger_log(LOG_DEBUG, "Thread wait completed. All complete: %s", 
+              all_complete ? "true" : "false");
+    return all_complete;
 }
 
 // Update wait_for_all_other_threads_to_complete:
@@ -463,12 +548,15 @@ void wait_for_all_other_threads_to_complete(void) {
     // Get the current thread label
     const char* current_thread_label = get_thread_label();
     
+    // Get thread registry instance through the getter
+    ThreadRegistry* registry = get_thread_registry();
+    
     // Lock the registry mutex
-    platform_mutex_lock(&g_thread_registry.mutex);
+    platform_mutex_lock(&registry->mutex);
     
     // Count active threads and collect handles
     uint32_t active_count = 0;
-    ThreadRegistryEntry* entry = g_thread_registry.head;
+    ThreadRegistryEntry* entry = registry->head;
     while (entry != NULL) {
         if (entry->state != THREAD_STATE_TERMINATED && 
             entry->thread && entry->thread->label && 
@@ -479,21 +567,21 @@ void wait_for_all_other_threads_to_complete(void) {
     }
     
     if (active_count == 0) {
-        platform_mutex_unlock(&g_thread_registry.mutex);
+        platform_mutex_unlock(&registry->mutex);
         return;
     }
     
     // Allocate handles array
     ThreadHandle_T* handles = (ThreadHandle_T*)malloc(active_count * sizeof(ThreadHandle_T));
     if (!handles) {
-        platform_mutex_unlock(&g_thread_registry.mutex);
+        platform_mutex_unlock(&registry->mutex);
         logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
         return;
     }
     
     // Collect handles
     uint32_t i = 0;
-    entry = g_thread_registry.head;
+    entry = registry->head;
     while (entry != NULL && i < active_count) {
         if (entry->state != THREAD_STATE_TERMINATED && 
             entry->thread && entry->thread->label && 
@@ -503,7 +591,7 @@ void wait_for_all_other_threads_to_complete(void) {
         entry = entry->next;
     }
     
-    platform_mutex_unlock(&g_thread_registry.mutex);
+    platform_mutex_unlock(&registry->mutex);
     
     // Wait for all other threads
     platform_thread_wait_multiple(handles, active_count, true, PLATFORM_WAIT_INFINITE);
@@ -513,7 +601,6 @@ void wait_for_all_other_threads_to_complete(void) {
     
     // Process any remaining log messages
     LogEntry_T log_entry;
-
     while (log_queue_pop(&global_log_queue, &log_entry)) {
         log_now(&log_entry);
     }

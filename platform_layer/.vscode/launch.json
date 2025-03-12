@@ -27,29 +27,18 @@
             "MIMode": "lldb",
             "preLaunchTask": "CMake: build (macos-arm64-release)"
         },
-        // {
-        //     "name": "Windows x64 (Debug)",
-        //     "type": "cppvsdbg",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/build/x64/Debug/platform_layer_test.exe",
-        //     "args": [],
-        //     "stopAtEntry": false,
-        //     "cwd": "${workspaceFolder}",
-        //     "environment": [],
-        //     "console": "integratedTerminal",
-        //     "preLaunchTask": "CMake: build (x64-debug)"
-        // },
-        // {
-        //     "name": "Windows x64 (Release)",
-        //     "type": "cppvsdbg",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/build/x64/Release/platform_layer_test.exe",
-        //     "args": [],
-        //     "stopAtEntry": false,
-        //     "cwd": "${workspaceFolder}",
-        //     "environment": [],
-        //     "console": "integratedTerminal",
-        //     "preLaunchTask": "CMake: build (x64-release)"
-        // }
+        {
+            "name": "C/C++: clang build and debug active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "C/C++: clang build active file"
+        }
     ]
 }

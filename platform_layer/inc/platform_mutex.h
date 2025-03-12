@@ -168,6 +168,25 @@ PlatformErrorCode platform_event_reset(PlatformEvent_T event);
  */
 PlatformErrorCode platform_event_wait(PlatformEvent_T event, uint32_t timeout_ms);
 
+/**
+ * @brief Initialises a mutex.
+ * @param mutex Pointer to the mutex structure.
+ */
+int init_mutex(PlatformMutex_T *mutex);
+
+/**
+ * @brief Locks a mutex.
+ * @param mutex Pointer to the mutex structure.
+ */
+int lock_mutex(PlatformMutex_T *mutex);
+
+/**
+ * @brief Unlocks a mutex.
+ * @param mutex Pointer to the mutex structure.
+ */
+int unlock_mutex(PlatformMutex_T *mutex);
+
+
 #ifdef __cplusplus
 }
 #endif

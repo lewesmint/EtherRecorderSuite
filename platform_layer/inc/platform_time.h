@@ -136,6 +136,13 @@ PlatformErrorCode platform_format_current_time(
     size_t buffer_size,
     const char* format);
 
+/**
+ * @brief Sleep for the specified number of milliseconds.
+ *
+ * @param ms Number of milliseconds to sleep.
+ */
+void sleep_ms(uint32_t ms);
+
 #ifdef __cplusplus
 }
 #endif

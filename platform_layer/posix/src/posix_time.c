@@ -197,3 +197,7 @@ PlatformErrorCode platform_format_current_time(
 
     return PLATFORM_ERROR_SUCCESS;
 }
+
+void sleep_ms(uint32_t ms) {
+    platform_sleep(ms);
+}

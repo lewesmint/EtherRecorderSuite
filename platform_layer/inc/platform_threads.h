@@ -5,15 +5,29 @@
 #ifndef PLATFORM_THREADS_H
 #define PLATFORM_THREADS_H
 
+// 1. System includes
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
+// 2. Platform-specific includes
 #include "platform_error.h"
+// No way around this
+#ifdef _WIN32
+    #include <windows.h>
+    #define THREAD_LOCAL __declspec(thread)
+#else
+    #include <pthread.h>
+    #define THREAD_LOCAL __thread
+#endif
+
+// platform agnostic thread handle
+typedef void* PlatformThreadHandle;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 
 /**
  * @brief Thread priority levels

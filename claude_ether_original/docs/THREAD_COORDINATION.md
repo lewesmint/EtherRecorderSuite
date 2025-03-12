@@ -79,15 +79,23 @@ Global thread management system that:
 
 ### Thread Creation
 ```c
-// Example of proper thread group setup
-CommsThreadGroup group;
-comms_thread_group_init(&group, "CLIENT_CONN", socket, &connection_flag);
+// Example of proper thread setup
+CommsArgs_T client_thread_args = {
+    .context = &client_context,
+    .thread_info = NULL,
+    .queue = NULL,              // Will be set during thread creation
+    .thread_id = 0              // Will be set during thread creation
+};
 
-// Create and register threads with shared group ID
-AppThread_T send_thread = {
-    .label = "send_thread",
-    .group_id = group.group_id,  // Share group ID
-    // ... other initialization
+AppThread_T client_thread = {
+    .label = "CLIENT",
+    .func = clientMainThread,
+    .data = &client_thread_args,
+    .pre_create_func = pre_create_stub,
+    .post_create_func = post_create_stub,
+    .init_func = init_wait_for_logger,
+    .exit_func = exit_stub,
+    .suppressed = false
 };
 ```
 

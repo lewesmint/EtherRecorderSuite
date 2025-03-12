@@ -81,6 +81,8 @@ typedef enum PlatformErrorCode {
  */
 PlatformErrorCode platform_get_error_code(PlatformErrorDomain domain);
 
+
+
 /**
  * @brief Gets a human-readable error message for a platform-agnostic error code
  * 
@@ -91,15 +93,16 @@ PlatformErrorCode platform_get_error_code(PlatformErrorDomain domain);
  */
 char* platform_get_error_message_from_code(PlatformErrorCode error_code, char* buffer, size_t buffer_size);
 
-/**
- * @brief Gets a human-readable error message for the last system error
- * 
- * @param domain The error domain to use for categorizing the error
- * @param buffer Buffer to store the error message
- * @param buffer_size Size of the buffer
- * @return char* Pointer to the buffer containing the error message
- */
-char* platform_get_error_message(PlatformErrorDomain domain, char* buffer, size_t buffer_size);
+// /**
+//  * @brief Gets a human-readable error message for the last system error
+//  * 
+//  * @param domain The error domain to use for categorizing the error
+//  * @param buffer Buffer to store the error message
+//  * @param buffer_size Size of the buffer
+//  * @return char* Pointer to the buffer containing the error message
+//  */
+// char* platform_get_error_message(PlatformErrorDomain domain, char* buffer, size_t buffer_size);
+
 
 /**
  * @brief Gets a platform-agnostic socket error code based on the last socket error

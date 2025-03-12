@@ -10,10 +10,11 @@
 #include <unistd.h>
 #include <limits.h>
 #include <libgen.h>
+#include <stdbool.h>
+#include <sys/stat.h>
 
 // Platform-specific constants
-const size_t PLATFORM_MAX_PATH_LENGTH = PATH_MAX;
-const char PLATFORM_PATH_SEPARATOR = '/';
+const char PATH_SEPARATOR = '/';
 
 PlatformErrorCode platform_get_current_dir(char* buffer, size_t size) {
     if (!buffer || size == 0) {
@@ -90,9 +91,9 @@ PlatformErrorCode platform_path_join(const char* base, const char* part, char* r
     strcpy(result, base);
     
     // Add separator if base doesn't end with one and part doesn't start with one
-    if (base_len > 0 && base[base_len - 1] != PLATFORM_PATH_SEPARATOR && 
-        part_len > 0 && part[0] != PLATFORM_PATH_SEPARATOR) {
-        result[base_len] = PLATFORM_PATH_SEPARATOR;
+    if (base_len > 0 && base[base_len - 1] != PATH_SEPARATOR && 
+        part_len > 0 && part[0] != PATH_SEPARATOR) {
+        result[base_len] = PATH_SEPARATOR;
         strcpy(result + base_len + 1, part);
     } else {
         strcpy(result + base_len, part);
@@ -175,25 +176,25 @@ PlatformErrorCode platform_path_normalize(char* path) {
     bool skip_slash = false;
 
     while (*src) {
-        if (*src == PLATFORM_PATH_SEPARATOR) {
+        if (*src == PATH_SEPARATOR) {
             if (!skip_slash) {
                 last_slash = dst;
                 *dst++ = *src;
                 skip_slash = true;
             }
         } else if (*src == '.') {
-            if (*(src + 1) == PLATFORM_PATH_SEPARATOR || *(src + 1) == '\0') {
+            if (*(src + 1) == PATH_SEPARATOR || *(src + 1) == '\0') {
                 src++;  // Skip '.' and move to separator or end
                 continue;
             } else if (*(src + 1) == '.' && 
-                      (*(src + 2) == PLATFORM_PATH_SEPARATOR || *(src + 2) == '\0')) {
+                      (*(src + 2) == PATH_SEPARATOR || *(src + 2) == '\0')) {
                 if (last_slash) {
                     dst = last_slash;  // Remove last component
                     if (dst > path) {
                         // Find the last separator before dst
                         char* p = dst - 1;
                         while (p >= path) {
-                            if (*p == PLATFORM_PATH_SEPARATOR) {
+                            if (*p == PATH_SEPARATOR) {
                                 last_slash = p;
                                 break;
                             }
@@ -223,7 +224,7 @@ bool platform_path_is_absolute(const char* path) {
     if (!path) {
         return false;
     }
-    return path[0] == PLATFORM_PATH_SEPARATOR;
+    return path[0] == PATH_SEPARATOR;
 }
 
 PlatformErrorCode platform_path_to_native(char* path) {
@@ -235,10 +236,14 @@ PlatformErrorCode platform_path_to_native(char* path) {
     char* p = path;
     while (*p) {
         if (*p == '\\') {
-            *p = PLATFORM_PATH_SEPARATOR;
+            *p = PATH_SEPARATOR;
         }
         p++;
     }
 
     return PLATFORM_ERROR_SUCCESS;
+}
+
+int platform_mkdir(const char* path) {
+    return mkdir(path, 0755);
 }

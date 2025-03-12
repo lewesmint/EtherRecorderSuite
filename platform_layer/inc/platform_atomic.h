@@ -49,56 +49,50 @@ void platform_atomic_init_ptr(PlatformAtomicPtr* atomic, void* value);
 /**
  * @brief Store operations
  */
-void platform_atomic_store_int32(PlatformAtomicInt32* atomic, int32_t value, PlatformMemoryOrder order);
-void platform_atomic_store_uint32(PlatformAtomicUInt32* atomic, uint32_t value, PlatformMemoryOrder order);
-void platform_atomic_store_int64(PlatformAtomicInt64* atomic, int64_t value, PlatformMemoryOrder order);
-void platform_atomic_store_uint64(PlatformAtomicUInt64* atomic, uint64_t value, PlatformMemoryOrder order);
-void platform_atomic_store_bool(PlatformAtomicBool* atomic, bool value, PlatformMemoryOrder order);
-void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value, PlatformMemoryOrder order);
+void platform_atomic_store_int32(PlatformAtomicInt32* atomic, int32_t value);
+void platform_atomic_store_uint32(PlatformAtomicUInt32* atomic, uint32_t value);
+void platform_atomic_store_int64(PlatformAtomicInt64* atomic, int64_t value);
+void platform_atomic_store_uint64(PlatformAtomicUInt64* atomic, uint64_t value);
+void platform_atomic_store_bool(PlatformAtomicBool* atomic, bool value);
+void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value);
 
 /**
  * @brief Load operations
  */
-int32_t  platform_atomic_load_int32(const PlatformAtomicInt32* atomic, PlatformMemoryOrder order);
-uint32_t platform_atomic_load_uint32(const PlatformAtomicUInt32* atomic, PlatformMemoryOrder order);
-int64_t  platform_atomic_load_int64(const PlatformAtomicInt64* atomic, PlatformMemoryOrder order);
-uint64_t platform_atomic_load_uint64(const PlatformAtomicUInt64* atomic, PlatformMemoryOrder order);
-bool     platform_atomic_load_bool(const PlatformAtomicBool* atomic, PlatformMemoryOrder order);
-void*    platform_atomic_load_ptr(const PlatformAtomicPtr* atomic, PlatformMemoryOrder order);
+int32_t  platform_atomic_load_int32(const PlatformAtomicInt32* atomic);
+uint32_t platform_atomic_load_uint32(const PlatformAtomicUInt32* atomic);
+int64_t  platform_atomic_load_int64(const PlatformAtomicInt64* atomic);
+uint64_t platform_atomic_load_uint64(const PlatformAtomicUInt64* atomic);
+bool     platform_atomic_load_bool(const PlatformAtomicBool* atomic);
+void*    platform_atomic_load_ptr(const PlatformAtomicPtr* atomic);
 
 /**
  * @brief Exchange operations
  */
-int32_t  platform_atomic_exchange_int32(PlatformAtomicInt32* atomic, int32_t value, PlatformMemoryOrder order);
-uint32_t platform_atomic_exchange_uint32(PlatformAtomicUInt32* atomic, uint32_t value, PlatformMemoryOrder order);
-int64_t  platform_atomic_exchange_int64(PlatformAtomicInt64* atomic, int64_t value, PlatformMemoryOrder order);
-uint64_t platform_atomic_exchange_uint64(PlatformAtomicUInt64* atomic, uint64_t value, PlatformMemoryOrder order);
-bool     platform_atomic_exchange_bool(PlatformAtomicBool* atomic, bool value, PlatformMemoryOrder order);
-void*    platform_atomic_exchange_ptr(PlatformAtomicPtr* atomic, void* value, PlatformMemoryOrder order);
+int32_t  platform_atomic_exchange_int32(PlatformAtomicInt32* atomic, int32_t value);
+uint32_t platform_atomic_exchange_uint32(PlatformAtomicUInt32* atomic, uint32_t value);
+int64_t  platform_atomic_exchange_int64(PlatformAtomicInt64* atomic, int64_t value);
+uint64_t platform_atomic_exchange_uint64(PlatformAtomicUInt64* atomic, uint64_t value);
+bool     platform_atomic_exchange_bool(PlatformAtomicBool* atomic, bool value);
+void*    platform_atomic_exchange_ptr(PlatformAtomicPtr* atomic, void* value);
 
 /**
  * @brief Compare-and-exchange operations
  */
-bool platform_atomic_compare_exchange_int32(PlatformAtomicInt32* atomic, int32_t* expected, int32_t desired, 
-                                          PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
-bool platform_atomic_compare_exchange_uint32(PlatformAtomicUInt32* atomic, uint32_t* expected, uint32_t desired,
-                                           PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
-bool platform_atomic_compare_exchange_int64(PlatformAtomicInt64* atomic, long* expected, long desired,
-                                          PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
-bool platform_atomic_compare_exchange_uint64(PlatformAtomicUInt64* atomic, unsigned long* expected, unsigned long desired,
-                                           PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
-bool platform_atomic_compare_exchange_bool(PlatformAtomicBool* atomic, bool* expected, bool desired,
-                                         PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
-bool platform_atomic_compare_exchange_ptr(PlatformAtomicPtr* atomic, void** expected, void* desired,
-                                        PlatformMemoryOrder success_order, PlatformMemoryOrder failure_order);
+bool platform_atomic_compare_exchange_int32(PlatformAtomicInt32* atomic, int32_t* expected, int32_t desired);
+bool platform_atomic_compare_exchange_uint32(PlatformAtomicUInt32* atomic, uint32_t* expected, uint32_t desired);
+bool platform_atomic_compare_exchange_int64(PlatformAtomicInt64* atomic, int64_t* expected, int64_t desired);
+bool platform_atomic_compare_exchange_uint64(PlatformAtomicUInt64* atomic, uint64_t* expected, uint64_t desired);
+bool platform_atomic_compare_exchange_bool(PlatformAtomicBool* atomic, bool* expected, bool desired);
+bool platform_atomic_compare_exchange_ptr(PlatformAtomicPtr* atomic, void** expected, void* desired);
 
 /**
  * @brief Fetch-and-add operations
  */
-int32_t  platform_atomic_fetch_add_int32(PlatformAtomicInt32* atomic, int32_t value, PlatformMemoryOrder order);
-uint32_t platform_atomic_fetch_add_uint32(PlatformAtomicUInt32* atomic, uint32_t value, PlatformMemoryOrder order);
-int64_t  platform_atomic_fetch_add_int64(PlatformAtomicInt64* atomic, int64_t value, PlatformMemoryOrder order);
-uint64_t platform_atomic_fetch_add_uint64(PlatformAtomicUInt64* atomic, uint64_t value, PlatformMemoryOrder order);
+int32_t  platform_atomic_fetch_add_int32(PlatformAtomicInt32* atomic, int32_t value);
+uint32_t platform_atomic_fetch_add_uint32(PlatformAtomicUInt32* atomic, uint32_t value);
+int64_t  platform_atomic_fetch_add_int64(PlatformAtomicInt64* atomic, int64_t value);
+uint64_t platform_atomic_fetch_add_uint64(PlatformAtomicUInt64* atomic, uint64_t value);
 
 /**
  * @brief Memory fence operation

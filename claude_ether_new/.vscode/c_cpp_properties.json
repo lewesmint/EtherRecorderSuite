@@ -1,0 +1,40 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/inc",
+                "${workspaceFolder}/../platform_layer/inc",
+                "${workspaceFolder}/**",
+                "${workspaceFolder}"
+            ],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/inc",
+                    "${workspaceFolder}/../platform_layer/inc",
+                    "${workspaceFolder}/**"
+                    
+                ],
+                "limitSymbolsToIncludedHeaders": false,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            },
+            "cStandard": "c17",
+            "compilerPath": "/usr/bin/clang",
+            "intelliSenseMode": "macos-clang-arm64",
+            "cppStandard": "c++20",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "defines": [
+                "true=1",
+                "false=0",
+                "__STDC_VERSION__=201710L"
+            ],
+            "compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json"
+        }
+    ],
+    "version": 4
+}
