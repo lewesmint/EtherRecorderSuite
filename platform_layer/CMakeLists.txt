@@ -1,55 +1,155 @@
 cmake_minimum_required(VERSION 3.10)
 project(platform_layer C)
 
-# Set C23 standard
-set(CMAKE_C_STANDARD 23)
+# Set C standard based on compiler
+if(MSVC)
+    set(CMAKE_C_STANDARD 17)
+else()
+    set(CMAKE_C_STANDARD 23)
+endif()
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Generate compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Set compiler flags based on build type and platform
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(MSVC)
+        set(CMAKE_C_FLAGS_DEBUG "/MTd /Zi /Ob0 /Od /RTC1 /D_DEBUG")
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
+    else()
+        set(CMAKE_C_FLAGS_DEBUG "-g -O0 -D_DEBUG")
+    endif()
+else()
+    if(MSVC)
+        set(CMAKE_C_FLAGS_RELEASE "/MT /O2 /Ob2 /DNDEBUG")
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    else()
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+    endif()
+endif()
+
+# Define header directories
+set(PLATFORM_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/windows/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/posix/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/macos/inc
+)
+
 # Windows-specific settings
 if(WIN32)
     add_definitions(
         -D_WIN32_WINNT=0x0600 
         -DNOMINMAX 
-        -DWIN32_LEAN_AND_MEAN 
+        -DWIN32_LEAN_AND_MEAN
         -D_CRT_SECURE_NO_WARNINGS
     )
-endif()
 
-# Include directories - make sure both public and private headers are found
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/posix/inc  # Add private POSIX headers
-)
+    # Ensure proper runtime library selection for Windows
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
+    else()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    endif()
+endif()
 
 # Platform-specific sources
 if(WIN32)
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/windows/inc)
-    file(GLOB PLATFORM_SOURCES "windows/src/*.c")
+    file(GLOB_RECURSE PLATFORM_SOURCES 
+        "windows/src/*.c"
+        "windows/src/**/*.c"
+    )
 elseif(APPLE)
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/macos/inc)
-    file(GLOB PLATFORM_SOURCES 
+    file(GLOB_RECURSE PLATFORM_SOURCES 
         "posix/src/*.c"
+        "posix/src/**/*.c"
         "macos/src/*.c"
+        "macos/src/**/*.c"
     )
 else()
-    file(GLOB PLATFORM_SOURCES "posix/src/*.c")
+    file(GLOB_RECURSE PLATFORM_SOURCES 
+        "posix/src/*.c"
+        "posix/src/**/*.c"
+    )
 endif()
 
 # Create the library
 add_library(platform_layer ${PLATFORM_SOURCES})
 
+# Set include directories using target_include_directories
+target_include_directories(platform_layer
+    PUBLIC
+        ${PLATFORM_INCLUDE_DIRS}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Add source groups for better organization in Visual Studio
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${PLATFORM_SOURCES})
+
+# Add header files to the project for better IDE integration
+file(GLOB_RECURSE HEADER_FILES
+    "inc/*.h"
+    "windows/inc/*.h"
+    "posix/inc/*.h"
+    "macos/inc/*.h"
+)
+target_sources(platform_layer PRIVATE ${HEADER_FILES})
+
+# Create source groups for headers
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${HEADER_FILES})
+
 # Add compiler warnings
 if(MSVC)
-    target_compile_options(platform_layer PRIVATE /W4)
+    target_compile_options(platform_layer PRIVATE 
+        /W4 
+        /WX      # Treat warnings as errors
+        /wd4100  # Unreferenced formal parameter
+        /wd4200  # Zero-sized array in struct/union
+        /guard:cf # Control Flow Guard
+        /sdl     # Additional security checks
+        /MP      # Multi-processor compilation
+        /MD      # Multi-threaded DLL runtime
+    )
 else()
     target_compile_options(platform_layer PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 # Platform-specific libraries
 if(WIN32)
-    target_link_libraries(platform_layer PRIVATE shlwapi bcrypt ws2_32)
+    target_link_libraries(platform_layer PRIVATE 
+        shlwapi     # Shell API
+        bcrypt      # Cryptography
+        ws2_32      # Windows Sockets
+        synchronization  # WaitOnAddress and related functions
+        userenv     # User environment functions
+    )
+
+    # Enable Address Space Layout Randomization (ASLR)
+    if(MSVC)
+        set_target_properties(platform_layer PROPERTIES LINK_FLAGS "/DYNAMICBASE")
+    endif()
+endif()
+
+# Install rules
+install(TARGETS platform_layer
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+install(DIRECTORY inc/
+    DESTINATION include/platform_layer
+    FILES_MATCHING PATTERN "*.h"
+)
+
+if(MSVC)
+    add_custom_command(
+        TARGET platform_layer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_BINARY_DIR}/compile_commands.json"
+        "${CMAKE_BINARY_DIR}/../compile_commands.json"
+    )
 endif()

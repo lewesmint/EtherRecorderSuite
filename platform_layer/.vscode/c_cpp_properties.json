@@ -33,6 +33,32 @@
                 "__STDC_VERSION__=201710L"
             ],
             "compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json"
+        },
+        {
+            "name": "Win32-ARM64",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/inc",
+                "${workspaceFolder}/windows/inc",
+                "${workspaceFolder}/posix/inc",
+                "${workspaceFolder}/macos/inc"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32",
+                "_WIN32",
+                "_WIN32_WINNT=0x0600",
+                "NOMINMAX",
+                "WIN32_LEAN_AND_MEAN",
+                "_CRT_SECURE_NO_WARNINGS"
+            ],
+            "windowsSdkVersion": "10.0.22621.0",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.37.32822/bin/Hostarm64/arm64/cl.exe",
+            "cStandard": "c17",
+            "intelliSenseMode": "msvc-arm64",
+            "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],
     "version": 4

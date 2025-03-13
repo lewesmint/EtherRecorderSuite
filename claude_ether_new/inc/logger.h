@@ -11,6 +11,7 @@
 
 #include "platform_time.h"
 #include "app_thread.h"  // Add this include for ThreadConfig
+#include "logger_macros.h"
 
 
 #define LOG_MSG_BUFFER_SIZE 1024 // Buffer size for log messages

@@ -20,6 +20,9 @@ extern "C" {
 #ifdef MAX_PATH
 #define MAX_PATH_LEN MAX_PATH
 #else
+#ifndef PATH_MAX
+#define PATH_MAX 260
+#endif
 #define MAX_PATH_LEN PATH_MAX
 #endif
 #endif

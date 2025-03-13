@@ -29,56 +29,56 @@
     {
       "label": "Clean platform_layer (Debug)",
       "type": "shell",
-      "command": "rm -rf ../platform_layer/build/macos-arm64/Debug/*",
+      "command": "rm -rf ../platform_layer/build/windows-arm64/Debug/*",
       "problemMatcher": []
     },
     {
       "label": "Clean claude_ether_new (Debug)",
       "type": "shell",
-      "command": "rm -rf build/macos-arm64/Debug/*",
+      "command": "rm -rf build/windows-arm64/Debug/*",
       "problemMatcher": []
     },
     {
       "label": "Build platform_layer (Debug)",
       "type": "shell",
-      "command": "cmake --preset macos-arm64-debug && cmake --build --preset macos-arm64-debug",
+      "command": "cmake --preset windows-arm64-debug && cmake --build --preset windows-arm64-debug",
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$gcc"]
+      "problemMatcher": ["$msCompile"]
     },
     {
       "label": "Build claude_ether_new (Debug)",
       "type": "shell",
-      "command": "cmake --preset macos-arm64-debug && cmake --build --preset macos-arm64-debug",
-      "problemMatcher": ["$gcc"]
+      "command": "cmake --preset windows-arm64-debug && cmake --build --preset windows-arm64-debug",
+      "problemMatcher": ["$msCompile"]
     },
     {
       "label": "Clean platform_layer (Release)",
       "type": "shell",
-      "command": "rm -rf ../platform_layer/build/macos-arm64/Release/*",
+      "command": "rm -rf ../platform_layer/build/windows-arm64/Release/*",
       "problemMatcher": []
     },
     {
       "label": "Clean claude_ether_new (Release)",
       "type": "shell",
-      "command": "rm -rf build/macos-arm64/Release/*",
+      "command": "rm -rf build/windows-arm64/Release/*",
       "problemMatcher": []
     },
     {
       "label": "Build platform_layer (Release)",
       "type": "shell",
-      "command": "cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release",
+      "command": "cmake --preset windows-arm64-release && cmake --build --preset windows-arm64-release",
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$gcc"]
+      "problemMatcher": ["$msCompile"]
     },
     {
       "label": "Build claude_ether_new (Release)",
       "type": "shell",
-      "command": "cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release",
-      "problemMatcher": ["$gcc"]
+      "command": "cmake --preset windows-arm64-release && cmake --build --preset windows-arm64-release",
+      "problemMatcher": ["$msCompile"]
     }
   ]
 }
