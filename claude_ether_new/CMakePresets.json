@@ -10,7 +10,8 @@
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "/usr/bin/clang",
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_FLAGS_DEBUG": "-g -O0 -D_DEBUG"
             }
         },
         {
@@ -22,7 +23,8 @@
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "/usr/bin/clang",
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG"
             }
         }
     ],

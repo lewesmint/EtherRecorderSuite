@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <limits.h>
 
 #include "platform_error.h"
@@ -126,6 +127,15 @@ bool platform_path_is_absolute(const char* path);
  * @return PlatformErrorCode indicating success or failure
  */
 PlatformErrorCode platform_path_to_native(char* path);
+
+/**
+ * @brief Writes data to a stream
+ * @param stream The output stream
+ * @param buffer The data buffer to write
+ * @param size Number of bytes to write
+ * @return Number of bytes written, or -1 on error
+ */
+size_t platform_write(FILE* stream, const void* buffer, size_t size);
 
 int platform_mkdir(const char* path);
 

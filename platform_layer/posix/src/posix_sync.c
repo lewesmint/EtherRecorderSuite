@@ -375,3 +375,62 @@ PlatformErrorCode platform_event_wait(PlatformEvent_T event, uint32_t timeout_ms
     pthread_mutex_unlock(&event->mutex);
     return PLATFORM_ERROR_SUCCESS;
 }
+
+PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t timeout_ms) {
+    if (!handle) {
+        return PLATFORM_WAIT_ERROR;
+    }
+
+    pthread_mutex_t* mutex = (pthread_mutex_t*)handle;
+    int result = 0;
+    
+    if (timeout_ms == PLATFORM_WAIT_INFINITE) {
+        result = pthread_mutex_lock(mutex);
+        if (result == 0) {
+            pthread_mutex_unlock(mutex);
+            return PLATFORM_WAIT_SUCCESS;
+        }
+    } else {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+            return PLATFORM_WAIT_ERROR;
+        }
+        
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000;
+        }
+        
+        // Try to acquire the lock in a loop with timeout
+        struct timespec sleep_time = {0, 1000000}; // 1ms sleep
+        struct timespec remaining;
+        
+        while (1) {
+            result = pthread_mutex_trylock(mutex);
+            if (result == 0) {
+                break; // Lock acquired
+            }
+            if (result != EBUSY) {
+                return PLATFORM_WAIT_ERROR;
+            }
+            
+            // Check if we've exceeded timeout
+            struct timespec now;
+            if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+                return PLATFORM_WAIT_ERROR;
+            }
+            
+            if ((now.tv_sec > ts.tv_sec) || 
+                (now.tv_sec == ts.tv_sec && now.tv_nsec >= ts.tv_nsec)) {
+                return PLATFORM_WAIT_TIMEOUT;
+            }
+            
+            // Sleep for a short duration
+            nanosleep(&sleep_time, &remaining);
+        }
+    }
+    
+    return PLATFORM_WAIT_ERROR;
+}

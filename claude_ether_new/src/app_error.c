@@ -1,35 +1,57 @@
 #include "app_error.h"
 
-#include <stddef.h>
+#define DEFINE_ERROR_TABLES
+#include "thread_registry_errors.h"
+#include "thread_status_errors.h"
+#include "thread_result_errors.h"
+#undef DEFINE_ERROR_TABLES
 
-#define REG_ERROR(domain, code, message) { domain##_DOMAIN, code, message }
-
-static const struct {
-    int domain;
-    int code;
-    const char* message;
-} error_table[] = {
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_SUCCESS,                   "Success"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_NOT_INITIALIZED,          "Thread registry not initialized"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_INVALID_ARGS,             "Invalid arguments provided"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_LOCK_ERROR,               "Failed to acquire registry lock"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_DUPLICATE_THREAD,         "Thread already registered"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_CREATION_FAILED,          "Failed to create thread entry"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_NOT_FOUND,                "Thread not found in registry"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_INVALID_STATE_TRANSITION, "Invalid thread state transition"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_WAIT_ERROR,               "Error waiting for thread"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_TIMEOUT,                  "Timeout waiting for thread"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_REGISTRATION_FAILED,      "Thread registration failed"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_QUEUE_FULL,               "Message queue is full"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_QUEUE_EMPTY,              "Message queue is empty"),
-    REG_ERROR(THREAD_REGISTRY, THREAD_REG_CLEANUP_ERROR,            "Thread cleanup failed")
+struct DomainTable {
+    enum ErrorDomain domain;
+    const ErrorTableEntry* entries;
+    size_t count;
 };
 
-const char* app_error_get_message(int domain, int code) {
-    for (size_t i = 0; i < sizeof(error_table)/sizeof(error_table[0]); i++) {
-        if (error_table[i].domain == domain && error_table[i].code == code) {
-            return error_table[i].message;
+static struct DomainTable domain_tables[ERROR_DOMAIN_MAX];
+static bool tables_initialized = false;
+
+static void init_domain_tables(void) {
+    if (!tables_initialized) {
+        domain_tables[THREAD_REGISTRY_DOMAIN] = (struct DomainTable){
+            .domain = THREAD_REGISTRY_DOMAIN,
+            .entries = thread_registry_errors,
+            .count = sizeof(thread_registry_errors) / sizeof(thread_registry_errors[0])
+        };
+        
+        domain_tables[THREAD_STATUS_DOMAIN] = (struct DomainTable){
+            .domain = THREAD_STATUS_DOMAIN,
+            .entries = thread_status_errors,
+            .count = sizeof(thread_status_errors) / sizeof(thread_status_errors[0])
+        };
+        
+        domain_tables[THREAD_RESULT_DOMAIN] = (struct DomainTable){
+            .domain = THREAD_RESULT_DOMAIN,
+            .entries = thread_result_errors,
+            .count = sizeof(thread_result_errors) / sizeof(thread_result_errors[0])
+        };
+        
+        tables_initialized = true;
+    }
+}
+
+const char* app_error_get_message(enum ErrorDomain domain, int code) {
+    init_domain_tables();
+    
+    if (domain >= ERROR_DOMAIN_MAX) {
+        return "Invalid error domain";
+    }
+    
+    const struct DomainTable* table = &domain_tables[domain];
+    for (size_t j = 0; j < table->count; j++) {
+        if (table->entries[j].code == code) {
+            return table->entries[j].message;
         }
     }
+    
     return "Unknown error";
 }

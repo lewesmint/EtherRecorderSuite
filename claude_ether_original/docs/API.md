@@ -40,14 +40,22 @@ void server_cleanup(ServerHandle_T handle);
 
 ### Thread Management API
 ```c
-// Create a new thread group
-ThreadGroupHandle_T thread_group_create(const char* name);
+// Create a new thread in a group
+ThreadRegistryError thread_group_create_thread(
+    const ThreadConfig* master_thread,
+    ThreadConfig* thread_config
+);
 
-// Add thread to group
-int thread_group_add(ThreadGroupHandle_T group, AppThread_T* thread);
+// Check if thread belongs to group
+bool thread_group_contains(
+    PlatformThreadHandle master_handle,
+    PlatformThreadHandle thread_handle
+);
 
 // Signal group shutdown
-void thread_group_shutdown(ThreadGroupHandle_T group);
+ThreadRegistryError thread_group_terminate(
+    PlatformThreadHandle master_handle
+);
 ```
 
 ## Error Handling

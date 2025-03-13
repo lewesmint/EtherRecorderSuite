@@ -5,6 +5,7 @@
 #include "platform_path.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -242,6 +243,10 @@ PlatformErrorCode platform_path_to_native(char* path) {
     }
 
     return PLATFORM_ERROR_SUCCESS;
+}
+
+size_t platform_write(FILE* stream, const void* buffer, size_t size) {
+    return fwrite(buffer, 1, size, stream);
 }
 
 int platform_mkdir(const char* path) {

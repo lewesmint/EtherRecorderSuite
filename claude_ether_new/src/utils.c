@@ -81,7 +81,7 @@ void stream_print(FILE* stream, const char *format, ...) {
     int n = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     if (n > 0) {
-        fwrite(buffer, 1, (size_t)n, stream);
+        platform_write(stream, buffer, (size_t)n);
     }
 }
 
@@ -118,4 +118,16 @@ void sanitise_path(char* path) {
             *p = PATH_SEPARATOR;
         }
     }
+}
+
+/**
+ * @brief Get current time in milliseconds
+ * @return Current time in milliseconds
+ */
+uint32_t get_time_ms(void) {
+    uint32_t ticks;
+    if (platform_get_tick_count(&ticks) != PLATFORM_ERROR_SUCCESS) {
+        return 0; // Return 0 on error
+    }
+    return ticks;
 }

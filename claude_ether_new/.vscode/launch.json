@@ -10,9 +10,15 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "externalConsole": false,
+            "externalConsole": true,
             "MIMode": "lldb",
-            "preLaunchTask": "CMake: build (macos-arm64-debug)"
+            "preLaunchTask": "Clean and Build All (Debug)",
+            "setupCommands": [
+                {
+                    "description": "Enable signal passthrough",
+                    "text": "process handle -p true -s false -n false SIGINT SIGTERM"
+                }
+            ]
         },
         {
             "name": "MacOS ARM64 (Release)",
@@ -23,22 +29,15 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "externalConsole": false,
+            "externalConsole": true,
             "MIMode": "lldb",
-            "preLaunchTask": "CMake: build (macos-arm64-release)"
-        },
-        {
-            "name": "C/C++: clang build and debug active file",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${fileDirname}/${fileBasenameNoExtension}",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${fileDirname}",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
-            "preLaunchTask": "C/C++: clang build active file"
+            "preLaunchTask": "Clean and Build All (Release)",
+            "setupCommands": [
+                {
+                    "description": "Enable signal passthrough",
+                    "text": "process handle -p true -s false -n false SIGINT SIGTERM"
+                }
+            ]
         }
     ]
 }

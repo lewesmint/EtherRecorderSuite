@@ -3,25 +3,31 @@
 ## Thread Hierarchy
 
 ### 1. Base Thread Structure
-All threads use the common `AppThread_T` structure:
+All threads use the common `ThreadConfig` structure:
 ```c
-typedef struct AppThread_T {
+typedef struct ThreadConfig {
     const char* label;                   // Thread identifier
     ThreadFunc_T func;                   // Main thread function
-    ThreadHandle_T thread_id;            // Platform-agnostic thread ID
-    void *data;                         // Thread-specific context data
+    PlatformThreadHandle thread_id;      // Platform-agnostic thread identifier
+    void *data;                          // Thread-specific context data
     PreCreateFunc_T pre_create_func;     // Pre-creation hook
     PostCreateFunc_T post_create_func;   // Post-creation hook
     InitFunc_T init_func;                // Initialization hook
     ExitFunc_T exit_func;                // Cleanup hook
     bool suppressed;                     // Thread suppression flag
-} AppThread_T;
+    
+    // Queue processing related fields
+    MessageProcessor_T msg_processor;     // Message processing callback
+    uint32_t queue_process_interval_ms;  // How often to check queue (0 = every loop)
+    uint32_t max_process_time_ms;        // Max time to spend processing queue (0 = no limit)
+    uint32_t msg_batch_size;             // Max messages to process per batch (0 = no limit)
+} ThreadConfig;
 ```
 
 ### 2. Main Communication Threads
 
 #### Client Thread
-- Uses `AppThread_T` where `data` points to:
+- Uses `ThreadConfig` where `data` points to:
 ```c
 typedef struct {
     int port;                   // Port number
@@ -32,12 +38,31 @@ typedef struct {
 ```
 
 #### Server Thread
-- Uses `AppThread_T` where `data` points to:
+- Uses `ThreadConfig` where `data` points to:
 ```c
 typedef struct {
     char server_hostname[100];  // Server hostname or IP address
     CommsThreadArgs_T comm_args;// Common communication arguments
 } ServerCommsThreadArgs_T;
+```
+
+## Example Configurations
+
+```c
+ThreadConfig logger_thread = {
+    .label = "LOGGER",
+    .func = logger_thread_function,
+    .data = NULL,
+    .pre_create_func = pre_create_stub,
+    .post_create_func = post_create_stub,
+    .init_func = init_stub,
+    .exit_func = exit_stub,
+    .suppressed = false,
+    .msg_processor = logger_message_processor,
+    .queue_process_interval_ms = 0,
+    .max_process_time_ms = 100,
+    .msg_batch_size = 10
+};
 ```
 
 ### 3. Send/Receive Threads
@@ -82,13 +107,15 @@ typedef struct {
 } CommContext;
 ```
 
-## Data Flow
+## Thread Organization
 
 1. Main thread creates either client or server thread
    - Initializes with appropriate configuration structure
+   - Server thread becomes group master for its worker threads
+   - Client thread becomes group master for its communication threads
 
 2. When connection established:
-   - Client/Server thread creates send/receive threads
+   - Client/Server thread creates send/receive threads as group members
    - Each thread gets `CommsArgs_T` with:
      - Pointer to shared `CommContext`
      - Appropriate message queue for communication
@@ -96,6 +123,7 @@ typedef struct {
 3. Send/Receive threads:
    - Use shared `CommContext` for socket operations
    - Use message queue for inter-thread communication
+   - Belong to their creator's thread group
 
 ## Proposed Simplifications
 

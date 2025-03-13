@@ -10,6 +10,7 @@
 #include <stdarg.h>  // Add this for variable arguments
 
 #include "platform_time.h"
+#include "app_thread.h"  // Add this include for ThreadConfig
 
 
 #define LOG_MSG_BUFFER_SIZE 1024 // Buffer size for log messages
@@ -49,13 +50,12 @@ typedef enum LogOutput {
 /**
  * @brief Structure representing a log entry.
  */
-
 typedef struct LogEntry_T {
     uint64_t index;
     LogLevel level;
-    PlatformHighResTimestamp_T timestamp; // Use LARGE_INTEGER for high-resolution timestamp
+    PlatformHighResTimestamp_T timestamp;
     char message[LOG_MSG_BUFFER_SIZE];
-    char thread_label[THREAD_LABEL_SIZE]; // Add thread label field
+    char thread_label[THREAD_LABEL_SIZE];
 } LogEntry_T;
 
 /**
@@ -63,22 +63,23 @@ typedef struct LogEntry_T {
  */
 bool init_logger_from_config(char *logger_init_result);
 
+/**
+ * @brief Initializes the thread timestamp system.
+ */
 void init_thread_timestamp_system(void);
 
+/**
+ * @brief Creates a log entry with the given level and message.
+ */
 void create_log_entry(LogEntry_T* entry, LogLevel level, const char* message);
 
 /**
  * @brief Sets a thread-specific log file from configuration.
- *
- * @param thread_name The name of the thread.
  */
 void set_thread_log_file_from_config(const char *thread_name);
 
 /**
  * @brief Converts the log level to a string.
- *
- * @param level The log level to convert.
- * @return The string representation of the log level.
  */
 const char* log_level_to_string(LogLevel level);
 
@@ -94,107 +95,28 @@ void logger_close(void);
 
 /**
  * @brief Get the current log level.
- * 
- * @return The current log level.
  */
 LogLevel logger_get_level(void);
 
 /**
  * @brief Get the name of a log level.
- * 
- * @param level The log level to get the name of.
- * @return The name of the log level as a string.
  */
 const char* get_level_name(LogLevel level);
 
 /**
  * @brief Sets the log level.
- * @param level The log level to set.
  */
 void logger_set_level(LogLevel level);
 
 /**
- * @brief Logs a message with the specified log level.
- *
- * @param format The format string for the message.
- * @param ... The arguments for the format string.
+ * @brief Internal logging function - use logger_log macro instead.
+ * @note This function should not be called directly. Use the logger_log macro.
  */
 void _logger_log(LogLevel level, const char* format, ...);
 
-#ifdef _DEBUG
-/*
- * In debug builds, if the log level is LOG_TRACE (or if g_trace_all is true),
- * prepend the file and line information to the log message.
- */
-
-// Helper macros for readability
-#define _logger_log_with_file_line(level, fmt, ...) \
-    _logger_log(level, "[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
-
-#define _logger_log_without_file_line(level, fmt, ...) \
-    _logger_log(level, fmt, ##__VA_ARGS__)
-
-#if defined(_MSC_VER)
-  // MSVC - use different pragma syntax
-  #define logger_log(level, fmt, ...) \
-      __pragma(warning(push)) \
-      __pragma(warning(disable:4003)) \
-      ((level) == LOG_TRACE || g_trace_all ? \
-        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
-        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__)) \
-      __pragma(warning(pop))
-#elif defined(__clang__)
-  // Clang approach
-  #pragma clang diagnostic push
-  #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
-  #define logger_log(level, fmt, ...) \
-      ((level) == LOG_TRACE || g_trace_all ? \
-        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
-        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__))
-  #pragma clang diagnostic pop
-#else
-  // GCC and others
-  #define logger_log(level, fmt, ...) \
-      ((level) == LOG_TRACE || g_trace_all ? \
-        _logger_log_with_file_line(level, fmt, ##__VA_ARGS__) : \
-        _logger_log_without_file_line(level, fmt, ##__VA_ARGS__))
-#endif
-
-#else
-/*
- * In non-debug builds, always use the standard logging function without
- * file/line info.
- */
-#if defined(_MSC_VER)
-  #define logger_log(level, fmt, ...) \
-      __pragma(warning(push)) \
-      __pragma(warning(disable:4003)) \
-      _logger_log(level, fmt, ##__VA_ARGS__) \
-      __pragma(warning(pop))
-#elif defined(__clang__)
-  #pragma clang diagnostic push
-  #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
-  #define logger_log(level, fmt, ...) \
-      _logger_log(level, fmt, ##__VA_ARGS__)
-  #pragma clang diagnostic pop
-#else
-  #define logger_log(level, fmt, ...) \
-      _logger_log(level, fmt, ##__VA_ARGS__)
-#endif
-#endif
-
 /**
- * @brief Logger thread main function.
- * 
- * @param arg Pointer to thread arguments (AppThread_T structure)
- * @return void* Thread return value (always NULL)
+ * @brief Get the logger thread configuration.
  */
-void* logger_thread_function(void* arg);
-
-/**
- * @brief Flag indicating if logger thread is ready
- * Volatile because it's accessed from multiple threads
- */
-extern volatile bool logger_ready;
+ThreadConfig* get_logger_thread(void);
 
 #endif // LOGGER_H

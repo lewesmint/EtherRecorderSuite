@@ -46,4 +46,10 @@ void sleep_seconds(double seconds);
 void strip_directory_path(const char* full_file_path, char* directory_path, size_t size);
 
 int create_directories(const char* path);
+
+/**
+ * @brief Get current time in milliseconds
+ * @return Current time in milliseconds
+ */
+uint32_t get_time_ms(void);
 #endif // UTILS_H

@@ -31,6 +31,12 @@
    - Verify proper state reporting
    - Test state change notifications
 
+4. Queue Management
+   - Verify queue ownership assignment
+   - Test queue ownership reporting in error conditions
+   - Validate empty queue debug logging
+   - Test queue full conditions with owner information
+
 ## Logging Verification
 - Enable debug logging
 - Verify thread registration messages

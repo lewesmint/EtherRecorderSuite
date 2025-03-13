@@ -1,4 +1,5 @@
 #include "app_thread.h"
+#include "demo_heartbeat_thread.h"
 
 // System includes
 #include <ctype.h>
@@ -26,11 +27,7 @@
 // #include "server_manager.h"
 #include "thread_registry.h"
 // #include "comm_threads.h"
-
 #include "utils.h"
-
-extern bool g_registry_initialized;
-extern volatile bool logger_ready;
 
 typedef enum WaitResult {
     APP_WAIT_SUCCESS = PLATFORM_WAIT_SUCCESS,    // 0
@@ -38,8 +35,8 @@ typedef enum WaitResult {
     APP_WAIT_ERROR = PLATFORM_WAIT_ERROR         // -1
 } WaitResult;
 
-extern PlatformCondition_T logger_thread_condition;
-extern PlatformMutex_T logger_thread_mutex;
+// extern PlatformCondition_T logger_thread_condition;
+// extern PlatformMutex_T logger_thread_mutex;
 
 static THREAD_LOCAL const char* thread_label = NULL;
 
@@ -51,71 +48,38 @@ const char* get_thread_label(void) {
     return thread_label;
 }
 
-bool app_thread_init(void) {
-    if (g_registry_initialized) {
-        return true;
-    }
-    
+ThreadRegistryError app_thread_init(void) {
     ThreadRegistryError result = init_global_thread_registry();
     if (result != THREAD_REG_SUCCESS) {
-        return false;
+        logger_log(LOG_ERROR, "Failed to initialize thread registry: %s",
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
+        return result;
     }
-    
-    g_registry_initialized = true;
-    return true;
-}
 
-bool app_thread_wait_all(uint32_t timeout_ms) {
-    if (!g_registry_initialized) {
-        stream_print(stderr, "Thread registry not initialized\n");
-        return false;
-    }
-    
-    ThreadRegistry* registry = get_thread_registry();
-    platform_mutex_lock(&registry->mutex);
-    
-    // Count active threads and collect handles
-    uint32_t active_count = 0;
-    ThreadRegistryEntry* entry = registry->head;
-    while (entry != NULL) {
-        if (entry->state != THREAD_STATE_TERMINATED) {
-            active_count++;
-        }
-        entry = entry->next;
-    }
-    
-    if (active_count == 0) {
-        platform_mutex_unlock(&registry->mutex);
-        return true;
-    }
-    
-    // Allocate handles array
-    PlatformThreadHandle* handles = (PlatformThreadHandle*)malloc(active_count * sizeof(PlatformThreadHandle));
-    if (!handles) {
-        platform_mutex_unlock(&registry->mutex);
-        logger_log(LOG_ERROR, "Failed to allocate memory for thread handles");
-        return false;
-    }
-    
-    // Collect handles
-    uint32_t i = 0;
-    entry = registry->head;
-    while (entry != NULL && i < active_count) {
-        if (entry->state != THREAD_STATE_TERMINATED) {
-            handles[i++] = entry->handle;
-        }
-        entry = entry->next;
-    }
-    
-    platform_mutex_unlock(&registry->mutex);
-    
-    // Wait for all threads with the specified timeout
-    PlatformWaitResult result = platform_wait_multiple(handles, active_count, true, timeout_ms);
-    free(handles);
-    
-    return (result == PLATFORM_WAIT_SUCCESS);
-}
+    // Create a thread structure for the main thread
+    static ThreadConfig main_thread = {
+        .label = "MAIN"
+    };
 
+    // Register the main thread with its current handle
+    PlatformThreadHandle main_handle = platform_thread_get_handle();
+    result = thread_registry_register(&main_thread, main_handle, false);
+    if (result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to register main thread: %s",
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
+        return result;
+    }
+
+    // Initialize message queue for main thread
+    result = init_queue(main_thread.label);
+    if (result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to initialize main thread message queue: %s",
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
+        return result;
+    }
+    
+    return THREAD_REG_SUCCESS;
+}
 
 void* pre_create_stub(void* arg) {
     (void)arg;
@@ -152,59 +116,37 @@ int wait_for_condition_with_timeout(void* condition, void* mutex, int timeout_ms
     }
 }
 
-// void* init_wait_for_logger(void* arg) {
-//     AppThread_T* thread_info = (AppThread_T*)arg;
-//     init_thread_timestamp_system();
-
-//     platform_mutex_lock(&logger_thread_mutex);
-//     while (!logger_ready) {
-//         int result = wait_for_condition_with_timeout(&logger_thread_condition, 
-//                                                    &logger_thread_mutex, 
-//                                                    5000);
-//         if (result != APP_WAIT_SUCCESS) {
-//             platform_mutex_unlock(&logger_thread_mutex);
-//             return (void*)(intptr_t)result;
-//         }
-//     }
-//     platform_mutex_unlock(&logger_thread_mutex);
-    
-//     set_thread_log_file_from_config(thread_info->label);
-//     logger_log(LOG_INFO, "Thread %s initialised", thread_info->label);
-    
-//     return (void*)THREAD_SUCCESS;
-// }
-
-void* init_wait_for_logger(void* arg) {
-    AppThread_T* thread_info = (AppThread_T*)arg;
-    set_thread_label(thread_info->label);
-    init_thread_timestamp_system();
-
-    platform_mutex_lock(&logger_thread_mutex);
-    while (!logger_ready) {
-        int result = wait_for_condition_with_timeout(&logger_thread_condition, &logger_thread_mutex, 5000);
-        if (result == APP_WAIT_TIMEOUT) {
-            platform_mutex_unlock(&logger_thread_mutex);
-            return (void*)THREAD_ERROR_LOGGER_TIMEOUT;
-        } else if (result == APP_WAIT_ERROR) {
-            platform_mutex_unlock(&logger_thread_mutex);
-            return (void*)THREAD_ERROR_MUTEX_ERROR;
-        }
+static ThreadResult wait_for_logger(ThreadConfig* thread_info) {
+    // If we are the logger, don't wait for ourselves
+    if (strcmp(thread_info->label, "LOGGER") == 0) {
+        return THREAD_SUCCESS;
     }
-    platform_mutex_unlock(&logger_thread_mutex);
-    
-    set_thread_log_file_from_config(thread_info->label);
-    // if (!set_thread_log_file_from_config(thread_info->label)) {
-    //     return (void*)THREAD_ERROR_CONFIG_ERROR;
-    // }
-    
-    logger_log(LOG_INFO, "Thread %s initialised", thread_info->label);
-    logger_log(LOG_INFO, "Logger thread initialised");
 
-    return (void*)THREAD_SUCCESS;
+    uint32_t timeout = 5000;  // 5 second timeout
+    uint32_t sleep_interval = 10;  // 10ms check intervals
+    uint32_t elapsed = 0;
+
+    while (elapsed < timeout) {
+        ThreadState logger_state = thread_registry_get_state("LOGGER");
+        if (logger_state == THREAD_STATE_RUNNING) {
+            break;
+        }
+        sleep_ms(sleep_interval);
+        elapsed += sleep_interval;
+    }
+
+    if (elapsed >= timeout) {
+        return THREAD_ERROR_LOGGER_TIMEOUT;
+    }
+
+    set_thread_log_file_from_config(thread_info->label);
+    logger_log(LOG_INFO, "Thread %s initialised", thread_info->label);
+
+    return THREAD_SUCCESS;
 }
 
 bool is_thread_suppressed(const char* suppressed_list, const char* thread_label) {
-    if (!suppressed_list || !thread_label) {
+    if (!suppressed_list || !thread_label || !*thread_label) {  // Check for empty string
         return false;
     }
     
@@ -241,69 +183,67 @@ bool is_thread_suppressed(const char* suppressed_list, const char* thread_label)
 }
 
 void app_thread_cleanup(void) {
-    if (!g_registry_initialized) {
-        return;
-    }
-    
-    ThreadRegistry* registry = get_thread_registry();
-    thread_registry_cleanup(registry);
-    g_registry_initialized = false;
+    thread_registry_cleanup();
 }
 
 
-// Define the thread structure
-AppThread_T logger_thread = {
-    .label = "LOGGER",
-    .func = logger_thread_function,
-    .data = NULL,
+// Define the default template
+const ThreadConfig ThreadConfigemplate = {
+    .label = NULL,                         // Must be set by thread
+    .func = NULL,                          // Must be set by thread
+    .data = NULL,                          // Optional thread data
+    .thread_id = NULL,                     // Set by app_thread_create
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
-    .init_func = init_stub,        // Logger doesn't wait for itself
+    .init_func = init_stub,
     .exit_func = exit_stub,
-    .suppressed = false            // Logger cannot be suppressed
+    .suppressed = false,
+    
+    // Queue processing defaults
+    .msg_processor = NULL,                 // No message processing by default
+    .queue_process_interval_ms = 0,        // Check every loop
+    .max_process_time_ms = 100,           // 100ms default
+    .msg_batch_size = 10                  // Process up to 10 messages per batch
 };
 
-// Update start_threads function
+
+// Helper function to create a thread from template
+ThreadConfig create_thread_config(const char* label, 
+                                  ThreadFunc_T func, 
+                                  const ThreadConfig* template) {
+    ThreadConfig new_config = template ? *template : ThreadConfigemplate;
+    new_config.label = label;
+    new_config.func = func;
+    return new_config;
+}
+
 void start_threads(void) {
-    // Initialize synchronization primitives
-    platform_cond_init(&logger_thread_condition);
-    platform_mutex_init(&logger_thread_mutex);
-    
     // Initialize thread registry
-    if (!app_thread_init()) {
-        stream_print(stderr, "Failed to initialize thread registry\n");
+    ThreadRegistryError result = app_thread_init();
+    if (result != THREAD_REG_SUCCESS) {
+        stream_print(stderr, "Failed to initialize thread registry: %s\n",
+                    app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
         return;
     }
-    
-    // Start logger thread first
-    if (app_thread_create(&logger_thread) != THREAD_REG_SUCCESS) {
-        stream_print(stderr, "Failed to create logger thread\n");
-        return;
-    }
-    
-    // Brief pause to ensure logger is ready
-    sleep_ms(100);
     
     // Get suppressed threads from configuration
     const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
     
-    // Define the remaining threads to start
+    // Define all threads to start
     ThreadStartInfo threads_to_start[] = {
-        // { &logger_thread, true },      // Logger always starts first and is essential
-        // { &client_thread, false },
-        // { &server_thread, false },
-        // { &command_interface_thread, false }
+        { get_demo_heartbeat_thread(), false }, // Demo thread is not essential
+        { get_logger_thread(), true }         // Logger is essential
     };
     
-    // Start each non-suppressed thread
+    // Start each thread
     for (size_t i = 0; i < sizeof(threads_to_start) / sizeof(threads_to_start[0]); i++) {
-        AppThread_T* thread = threads_to_start[i].thread;
+        ThreadConfig* thread = threads_to_start[i].thread;
         bool is_essential = threads_to_start[i].is_essential;
         
         if (!thread) continue;
         
-        // Check if thread should be suppressed
-        if (!is_essential && is_thread_suppressed(thread->label, suppressed_list)) {
+        // Check if thread should be suppressed (never suppress essential threads)
+        if (!is_essential && is_thread_suppressed(suppressed_list, thread->label)) {
             thread->suppressed = true;
             continue;
         }
@@ -316,82 +256,15 @@ void start_threads(void) {
                 return;
             }
         }
-    }
-}
-
-bool wait_for_all_threads_to_complete(uint32_t timeout_ms) {
-    if (!g_registry_initialized) {
-        stream_print(stderr, "Thread registry not initialised\n");
-        return false;
-    }
-
-    ThreadRegistry* registry = get_thread_registry();
-    platform_mutex_lock(&registry->mutex);
-
-    // Use stack allocation with maximum registry size
-    PlatformThreadHandle handles[MAX_THREADS];
-    uint32_t active_count = 0;
-
-    // Collect active thread handles
-    ThreadRegistryEntry* entry = registry->head;
-    while (entry != NULL && active_count < MAX_THREADS) {
-        if (entry->state != THREAD_STATE_TERMINATED) {
-            handles[active_count++] = entry->handle;
-        }
-        entry = entry->next;
-    }
-
-    platform_mutex_unlock(&registry->mutex);
-
-    if (active_count == 0) {
-        return true;
-    }
-
-    // Wait for all threads
-    PlatformWaitResult result = platform_wait_multiple(handles, active_count, true, timeout_ms);
-    return (result == PLATFORM_WAIT_SUCCESS);
-}
-
-void wait_for_all_other_threads_to_complete(void) {
-    if (!g_registry_initialized) {
-        stream_print(stderr, "Thread registry not initialised\n");
-        return;
-    }
-
-    const char* current_thread_label = get_thread_label();
-    ThreadRegistry* registry = get_thread_registry();
-    platform_mutex_lock(&registry->mutex);
-
-    // Use stack allocation
-    PlatformThreadHandle handles[MAX_THREADS];
-    uint32_t active_count = 0;
-
-    // Collect handles of other active threads
-    ThreadRegistryEntry* entry = registry->head;
-    while (entry != NULL && active_count < MAX_THREADS) {
-        if (entry->state != THREAD_STATE_TERMINATED && 
-            entry->thread && entry->thread->label && 
-            strcmp(entry->thread->label, current_thread_label) != 0) {
-            handles[active_count++] = entry->handle;
-        }
-        entry = entry->next;
-    }
-
-    platform_mutex_unlock(&registry->mutex);
-
-    if (active_count > 0) {
-        platform_wait_multiple(handles, active_count, true, PLATFORM_WAIT_INFINITE);
-        logger_log(LOG_INFO, "Thread '%s' has seen all other threads complete", current_thread_label);
         
-        // Process remaining logs
-        LogEntry_T log_entry;
-        while (log_queue_pop(&global_log_queue, &log_entry)) {
-            log_now(&log_entry);
-        }
+        // // Brief pause after logger starts to ensure it's ready
+        // if (strcmp(thread->label, "LOGGER") == 0) {
+        //     sleep_ms(100);
+        // }
     }
 }
 
-static void* thread_wrapper(AppThread_T* thread_args) {
+static void* thread_wrapper(ThreadConfig* thread_args) {
     if (!thread_args) {
         return (void*)THREAD_ERROR_INIT_FAILED;
     }
@@ -402,7 +275,25 @@ static void* thread_wrapper(AppThread_T* thread_args) {
     set_thread_label(thread_args->label);
     
     // Update thread state to running
-    thread_registry_update_state(get_thread_registry(), thread_args->label, THREAD_STATE_RUNNING);
+    thread_registry_update_state(thread_args->label, THREAD_STATE_RUNNING);
+    
+    // Initialize message queue for this thread
+    ThreadRegistryError queue_result = init_queue(thread_args->label);
+    if (queue_result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to initialize message queue for thread '%s'", 
+                  thread_args->label);
+        thread_registry_update_state(thread_args->label, 
+                                     THREAD_STATE_FAILED);
+        return (void*)THREAD_ERROR_INIT_FAILED;
+    }
+
+    // Wait for logger before any initialization
+    ThreadResult wait_result = wait_for_logger(thread_args);
+    if (wait_result != THREAD_SUCCESS) {
+        thread_registry_update_state(thread_args->label, 
+                                   THREAD_STATE_FAILED);
+        return (void*)wait_result;
+    }
     
     // Call init function if exists
     if (thread_args->init_func) {
@@ -410,8 +301,7 @@ static void* thread_wrapper(AppThread_T* thread_args) {
         if (init_result != THREAD_SUCCESS) {
             logger_log(LOG_ERROR, "Thread '%s' initialization failed with result %d", 
                       thread_args->label, init_result);
-            thread_registry_update_state(get_thread_registry(), 
-                                      thread_args->label, 
+            thread_registry_update_state(thread_args->label, 
                                       THREAD_STATE_FAILED);
             return (void*)(uintptr_t)init_result;
         }
@@ -436,25 +326,18 @@ static void* thread_wrapper(AppThread_T* thread_args) {
     }
     
     // Update thread state to terminated
-    thread_registry_update_state(get_thread_registry(), thread_args->label, THREAD_STATE_TERMINATED);
+    thread_registry_update_state(thread_args->label, THREAD_STATE_TERMINATED);
     
     return (void*)(run_result);
 }
 
-ThreadRegistryError app_thread_create(AppThread_T* thread) {
-    if (!g_registry_initialized) {
-        stream_print(stderr, "Thread registry not initialised\n");
-        return THREAD_REG_NOT_INITIALIZED;
-    }
-    
+ThreadRegistryError app_thread_create(ThreadConfig* thread) {
     if (!thread) {
         return THREAD_REG_INVALID_ARGS;
     }
-    
-    ThreadRegistry* registry = get_thread_registry();
-    
+        
     // Check if thread is already registered
-    if (thread_registry_is_registered(registry, thread)) {
+    if (thread_registry_is_registered(thread)) {
         logger_log(LOG_WARN, "Thread '%s' is already registered", thread->label);
         return THREAD_REG_DUPLICATE_THREAD;
     }
@@ -462,8 +345,14 @@ ThreadRegistryError app_thread_create(AppThread_T* thread) {
     // Handle stubbed function pointers
     if (!thread->pre_create_func) thread->pre_create_func = pre_create_stub;
     if (!thread->post_create_func) thread->post_create_func = post_create_stub;
-    if (!thread->init_func) thread->init_func = init_wait_for_logger;
+    if (!thread->init_func) thread->init_func = init_stub;
     if (!thread->exit_func) thread->exit_func = exit_stub;
+    
+    // Set default values for queue processing if not specified
+    if (!thread->msg_processor) thread->msg_processor = NULL;  // No message processing by default
+    if (!thread->queue_process_interval_ms) thread->queue_process_interval_ms = 0;  // Check every loop
+    if (!thread->max_process_time_ms) thread->max_process_time_ms = 100;  // 100ms default
+    if (!thread->msg_batch_size) thread->msg_batch_size = 10;  // Process up to 10 messages by default
     
     // Call pre-create function
     if (thread->pre_create_func) {
@@ -488,7 +377,7 @@ ThreadRegistryError app_thread_create(AppThread_T* thread) {
     }
     
     // Register the thread
-    ThreadRegistryError reg_result = thread_registry_register(registry, thread, thread_handle, true);
+    ThreadRegistryError reg_result = thread_registry_register(thread, thread_handle, true);
     if (reg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to register thread '%s': %s", 
                   thread->label, 
@@ -497,38 +386,64 @@ ThreadRegistryError app_thread_create(AppThread_T* thread) {
     }
     
     // Update thread state
-    thread_registry_update_state(registry, thread->label, THREAD_STATE_RUNNING);
+    thread_registry_update_state(thread->label, THREAD_STATE_RUNNING);
     
     return THREAD_REG_SUCCESS;
 }
 
-void* deprecated_app_thread(AppThread_T* thread_args) {
-    if (!thread_args) {
-        return NULL;
+/**
+ * @brief Service messages in thread's queue
+ * @param thread Thread context
+ * @return ThreadResult indicating processing result
+ */
+ThreadResult service_thread_queue(ThreadConfig* thread) {
+    if (!thread || !thread->msg_processor) {
+        return THREAD_SUCCESS; // No processor = nothing to do
     }
 
-    // Set thread-specific data
-    set_thread_label(thread_args->label);
+    uint32_t start_time = get_time_ms();
+    uint32_t messages_processed = 0;
+    ThreadResult result = THREAD_SUCCESS;
+    Message_T message;
 
-    // Call initialization if provided
-    if (thread_args->init_func) {
-        if (thread_args->init_func(thread_args) == NULL) {
-            logger_log(LOG_ERROR, "Thread '%s' initialization failed", thread_args->label);
-            return NULL;
+    while (true) {
+        // Check time limit
+        if (thread->max_process_time_ms > 0) {
+            uint32_t elapsed = get_time_ms() - start_time;
+            if (elapsed >= thread->max_process_time_ms) {
+                break;
+            }
+        }
+
+        // Check message batch limit
+        if (thread->msg_batch_size > 0 && messages_processed >= thread->msg_batch_size) {
+            break;
+        }
+
+        // Try to get a message (non-blocking)
+        ThreadRegistryError queue_result = pop_message(thread->label, &message, 0);
+        
+        if (queue_result == THREAD_REG_QUEUE_EMPTY) {
+            break;
+        }
+        else if (queue_result == THREAD_REG_SUCCESS) {
+            result = thread->msg_processor(thread, &message);
+            messages_processed++;
+            
+            if (result != THREAD_SUCCESS) {
+                logger_log(LOG_ERROR, "Message processing failed in thread '%s': %d", 
+                          thread->label, result);
+                break;
+            }
+        }
+        else {
+            logger_log(LOG_ERROR, "Queue access error in thread '%s': %s",
+                      thread->label,
+                      app_error_get_message(THREAD_REGISTRY_DOMAIN, queue_result));
+            result = THREAD_ERROR_QUEUE_ERROR; // Use ThreadResult enum value instead of ThreadStatus
+            break;
         }
     }
-
-    // Execute main thread function
-    void* result = thread_args->func(thread_args);
-
-    // Call cleanup if provided
-    if (thread_args->exit_func) {
-        thread_args->exit_func(thread_args);
-    }
-
-    // Signal completion via registry
-    ThreadRegistry* registry = get_thread_registry();
-    thread_registry_update_state(registry, thread_args->label, THREAD_STATE_TERMINATED);
 
     return result;
 }

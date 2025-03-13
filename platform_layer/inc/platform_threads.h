@@ -112,6 +112,12 @@ PlatformErrorCode platform_thread_detach(PlatformThreadHandle handle);
 PlatformThreadId platform_thread_get_id(void);
 
 /**
+ * @brief Get current thread handle
+ * @return Current thread handle
+ */
+PlatformThreadHandle platform_thread_get_handle(void);
+
+/**
  * @brief Set thread priority
  * @param[in] handle Thread handle
  * @param[in] priority New priority level

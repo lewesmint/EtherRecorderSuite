@@ -13,7 +13,10 @@
 #include "logger.h"
 #include "app_config.h"
 #include "app_thread.h"
+#include "thread_registry.h"
 #include "shutdown_handler.h"
+#include "message_types.h"
+#include "version_info.h"
 
 #define MAX_PATH_LEN 256
 
@@ -55,6 +58,9 @@ static PlatformErrorCode init_app(void) {
     if (result != PLATFORM_ERROR_SUCCESS) {
         return result;
     }
+
+    // Print version information immediately after console init
+    print_version_info();
     
     // Initialize thread timestamp system
     init_thread_timestamp_system();
@@ -70,8 +76,10 @@ static PlatformErrorCode init_app(void) {
     if (!load_config(config_file_name, config_load_result)) {
         printf("Failed to initialise configuration: %s\n", config_load_result);
         // Continue with defaults
+    } else {
+        logger_log(LOG_INFO, "Using config file: %s\n", config_file_name); 
+        logger_log(LOG_INFO, "Configuration: %s", config_load_result);
     }
-    
     // Initialize logger
     char logger_init_result[LOG_MSG_BUFFER_SIZE];
     if (!init_logger_from_config(logger_init_result)) {
@@ -94,7 +102,7 @@ static PlatformErrorCode cleanup_app(void) {
     PlatformErrorCode result = PLATFORM_ERROR_SUCCESS;
     
     // Wait for all threads to complete
-    if (!wait_for_all_threads_to_complete(7620)) {
+    if (thread_registry_wait_all(7620) != THREAD_REG_SUCCESS) {
         logger_log(LOG_WARN, "Timeout waiting for threads to complete");
     }
     
@@ -104,9 +112,39 @@ static PlatformErrorCode cleanup_app(void) {
     cleanup_shutdown_handler();
     logger_close();
     free_config();
+    
+    // Ensure terminal is in a good state before exit
+    platform_console_reset_formatting();
+    platform_console_set_echo(true);
+    platform_console_set_line_buffering(true);
+    platform_console_show_cursor(true);
     platform_console_cleanup();
     
+    // Flush any remaining output
+    fflush(stdout);
+    fflush(stderr);
+    
     return result;
+}
+
+static bool send_demo_text_message(const char* msg_text) {
+    Message_T message = {0};  // Zero-initialize the entire structure
+    message.header.type = MSG_TYPE_TEST;
+    message.header.content_size = strlen(msg_text) + 1;  // Include null terminator
+    
+    if (message.header.content_size > sizeof(message.content)) {
+        logger_log(LOG_ERROR, "Message too long for content buffer");
+        return false;
+    }
+    
+    memcpy(message.content, msg_text, message.header.content_size);
+    
+    MessageQueue_T* demo_queue = get_queue_by_label("DEMO_HEARTBEAT");
+    if (!demo_queue) {
+        return false;
+    }
+    
+    return message_queue_push(demo_queue, &message, 100);
 }
 
 int main(int argc, char *argv[]) {
@@ -122,11 +160,9 @@ int main(int argc, char *argv[]) {
         platform_get_error_message(result, error_message, sizeof(error_message));
         char buffer[512];
         platform_strformat(buffer, sizeof(buffer), "Failed to initialize application: %s\n", error_message);
-        fwrite(buffer, 1, strlen(buffer), stderr);
+        stream_print(stderr, "%s", buffer);
         return EXIT_FAILURE;
     }
-
-    logger_log(LOG_INFO, "Using config file: %s", config_file_name);
 
     // Start application threads
     start_threads();
@@ -134,8 +170,15 @@ int main(int argc, char *argv[]) {
 
     // Main application loop with heartbeat
     while (!shutdown_signalled()) {
+        // Send message to demo thread
+        if (!send_demo_text_message("Message from main thread")) {
+            logger_log(LOG_ERROR, "Failed to send demo message");
+        }
+        
         logger_log(LOG_DEBUG, "HEARTBEAT");
-        sleep_ms(7620);  // Same timeout as original
+        stream_print(stdout, "Main about to sleep\n");
+        sleep_ms(762);
+        stream_print(stdout, "Main has awoken\n");
     }
     
     result = cleanup_app();
@@ -143,7 +186,7 @@ int main(int argc, char *argv[]) {
         platform_get_error_message(result, error_message, sizeof(error_message));
         char buffer[512];
         platform_strformat(buffer, sizeof(buffer), "Error during cleanup: %s\n", error_message);
-        fwrite(buffer, 1, strlen(buffer), stderr);
+        stream_print(stderr, "%s", buffer);
         return EXIT_FAILURE;
     }
 

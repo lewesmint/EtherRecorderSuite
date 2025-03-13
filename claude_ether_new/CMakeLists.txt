@@ -43,3 +43,12 @@ if(MSVC)
 else()
     target_compile_options(ClaudeEther PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Set compile definitions based on build type
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(_DEBUG)
+    message(STATUS "Configuring Debug build")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_definitions(NDEBUG)
+    message(STATUS "Configuring Release build")
+endif()

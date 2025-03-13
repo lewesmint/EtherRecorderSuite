@@ -12,15 +12,19 @@ bool message_queue_push(MessageQueue_T* queue, const Message_T* message, uint32_
         return false;
     }
 
-    if (!platform_event_wait(queue->not_full_event, timeout_ms)) {
-        logger_log(LOG_ERROR, "Queue full timeout");
-        return false;
-    }
-
+    // First check if queue is full before waiting
     int32_t next_tail = (queue->tail + 1) % queue->max_size;
     if (next_tail == queue->head) {
-        logger_log(LOG_ERROR, "Queue full");
-        return false;
+        if (!platform_event_wait(queue->not_full_event, timeout_ms)) {
+            logger_log(LOG_ERROR, "Queue full timeout (owner: %s)", queue->owner_label);
+            return false;
+        }
+        // Recheck after wait
+        next_tail = (queue->tail + 1) % queue->max_size;
+        if (next_tail == queue->head) {
+            logger_log(LOG_ERROR, "Queue still full after wait (owner: %s)", queue->owner_label);
+            return false;
+        }
     }
 
     memcpy(&queue->entries[queue->tail], message, sizeof(Message_T));
@@ -36,14 +40,17 @@ bool message_queue_pop(MessageQueue_T* queue, Message_T* message, uint32_t timeo
         return false;
     }
 
-    if (!platform_event_wait(queue->not_empty_event, timeout_ms)) {
-        logger_log(LOG_ERROR, "Queue empty timeout");
-        return false;
-    }
-
+    // First check if queue is empty before waiting
     if (queue->head == queue->tail) {
-        logger_log(LOG_ERROR, "Queue empty");
-        return false;
+        if (!platform_event_wait(queue->not_empty_event, timeout_ms)) {
+            // logger_log(LOG_DEBUG, "Queue empty timeout");
+            return false;
+        }
+        // Recheck after wait
+        if (queue->head == queue->tail) {
+            // logger_log(LOG_DEBUG, "Queue still empty after wait");
+            return false;
+        }
     }
 
     memcpy(message, &queue->entries[queue->head], sizeof(Message_T));

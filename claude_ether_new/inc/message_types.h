@@ -9,17 +9,22 @@
 extern "C" {
 #endif
 
-// Message types
-#define MSG_TYPE_RELAY 1
-#define MSG_TYPE_CONTROL 2
-#define MSG_TYPE_DATA 3
+/**
+ * @brief Message type identifiers
+ */
+typedef enum MessageType {
+    MSG_TYPE_RELAY = 1,    ///< Relay message type
+    MSG_TYPE_CONTROL = 2,  ///< Control message type
+    MSG_TYPE_DATA = 3,     ///< Data message type
+    MSG_TYPE_TEST = 4      ///< Test message type (used in demo)
+} MessageType;
 
 /**
  * @brief Message header structure
  */
 typedef struct {
-    uint32_t type;           ///< Message type identifier
-    uint32_t content_size;   ///< Size of content in bytes
+    MessageType type;      ///< Message type identifier
+    uint32_t content_size; ///< Size of content in bytes
 } MessageHeader_T;
 
 /**
@@ -40,6 +45,7 @@ typedef struct {
     int32_t max_size;                ///< Maximum number of messages allowed
     PlatformEvent_T not_empty_event; ///< Event for signaling queue not empty
     PlatformEvent_T not_full_event;  ///< Event for signaling queue not full
+    const char* owner_label;         ///< Label of the thread that owns this queue
 } MessageQueue_T;
 
 // Function declarations

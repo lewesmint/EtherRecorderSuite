@@ -36,7 +36,7 @@ bool thread_group_add(ThreadGroup* group, AppThread_T* thread) {
     // Create the thread
     if (!thread->pre_create_func) thread->pre_create_func = pre_create_stub;
     if (!thread->post_create_func) thread->post_create_func = post_create_stub;
-    if (!thread->init_func) thread->init_func = init_wait_for_logger;
+    if (!thread->init_func) thread->init_func = init_stub;
     if (!thread->exit_func) thread->exit_func = exit_stub;
     
     // Call pre-create function

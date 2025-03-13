@@ -14,17 +14,20 @@ typedef struct ThreadRegistry {
     RWLock registry_lock;          // Read-write lock for better concurrency
     uint32_t count;               
     EventNotifier* state_notifier; // For state change notifications
+    const char* owner_label;       // Added owner label
 } ThreadRegistry;
 ```
 
 #### ThreadStatus
 ```c
 typedef struct ThreadStatus {
-    const AppThread_T* config;     
+    const ThreadConfig* config;
     PlatformThreadHandle handle;   
+    PlatformThreadHandle master_handle;  // Added: Reference to group master
     atomic_int state;              // Atomic state for thread-safe updates
     bool auto_cleanup;             
     ThreadCleanupHandler cleanup;   // Cleanup strategy
+    const char* owner_label;       // Added owner label
 } ThreadStatus;
 ```
 
@@ -84,7 +87,7 @@ typedef struct ThreadRegistryEntry {
 ```c
 ThreadRegistryError thread_registry_register(
     ThreadRegistry* registry, 
-    const AppThread_T* config,
+    const ThreadConfig* config,
     PlatformThreadHandle handle,
     bool auto_cleanup
 ) {
@@ -134,6 +137,7 @@ ThreadRegistryError thread_registry_register(
 - Registration/deregistration uses registry write lock
 - Status updates use entry write lock
 - State changes use atomic operations
+- Group membership changes through master handle updates
 
 ## Error Handling and Recovery
 
@@ -244,6 +248,149 @@ ThreadRegistryError thread_registry_register(
 
 ### Debugging Support
 - State change history
+- Error tracking
+- Resource monitoring
+- Performance metrics
+
+# Message Queue Design
+
+## Overview
+The message queue system provides a thread-safe mechanism for inter-thread communication. It supports multiple producers and consumers, ensuring reliable message delivery and preventing race conditions.
+
+## Core Components
+
+### Public Interfaces
+
+#### MessageQueue
+```c
+typedef struct MessageQueue {
+    Message_T* entries;
+    volatile int32_t head;
+    volatile int32_t tail;
+    int32_t max_size;
+    PlatformEvent_T not_empty_event;
+    PlatformEvent_T not_full_event;
+    const char* owner_label;         // Thread label that owns this queue
+} MessageQueue_T;
+```
+
+### Queue Management
+- Queue ownership tracked via owner_label
+- Queue initialized in owner thread's context
+- Debug logging for queue state changes
+- Error messages include queue owner information
+
+## Queue Operations
+
+### Enqueue Operation
+```c
+bool message_queue_enqueue(MessageQueue_T* queue, Message_T* message) {
+    // Implementation details
+}
+```
+
+### Dequeue Operation
+```c
+bool message_queue_dequeue(MessageQueue_T* queue, Message_T* message) {
+    // Implementation details
+}
+```
+
+## Synchronization Model
+
+### Lock Hierarchy
+1. Queue-level lock for structural changes
+2. Atomic operations for head and tail updates
+
+### Read Operations
+- Multiple readers allowed simultaneously
+- Message retrieval uses atomic reads
+- Queue state queries use atomic reads
+
+### Write Operations
+- Enqueue/dequeue operations use queue lock
+- Head and tail updates use atomic operations
+
+## Error Handling and Recovery
+
+### Error Recovery Procedures
+1. Enqueue Failure:
+   - Return false if queue is full
+   - Log error message with queue owner information
+
+2. Dequeue Failure:
+   - Return false if queue is empty
+   - Log error message with queue owner information
+
+### Resource Management
+
+#### Memory Management
+- All allocations tracked
+- Cleanup handlers registered
+- Resource limits enforced
+- Memory leaks prevented through cleanup chain
+
+#### Handle Management
+- Platform handles wrapped
+- Reference counting for shared handles
+- Automatic handle cleanup
+- Handle validation on operations
+
+## Performance Considerations
+
+### Lock Optimization
+- Read-heavy operations optimized
+- Fine-grained locking used
+- Lock contention minimized
+- Lock-free operations where possible
+
+### Scalability
+- O(1) enqueue and dequeue operations
+- O(1) space complexity
+- Configurable queue sizes
+
+## Implementation Requirements
+
+### Thread Safety
+- All public APIs thread-safe
+- Internal operations properly synchronized
+- No deadlock scenarios
+- Race conditions prevented
+
+### Resource Limits
+- Maximum queue size configurable
+- Memory usage bounded
+- Handle limits enforced
+- Queue sizes limited
+
+### Platform Requirements
+- Atomic operations support
+- Thread local storage
+- Read-write lock support
+- Event notification system
+
+## Validation
+
+### Input Validation
+- Queue size: positive integer
+- Messages: non-null, valid message format
+
+### State Validation
+- Queue state maintained
+- No invalid state combinations
+- State history maintained
+- Statistics validated
+
+## Monitoring and Debugging
+
+### Statistics Collection
+- Queue size
+- Enqueue and dequeue counts
+- Error counts
+- Resource usage
+
+### Debugging Support
+- Queue state change history
 - Error tracking
 - Resource monitoring
 - Performance metrics

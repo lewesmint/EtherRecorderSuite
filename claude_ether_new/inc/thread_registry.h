@@ -24,11 +24,12 @@ typedef enum ThreadState {
     THREAD_STATE_SUSPENDED,  ///< Thread temporarily suspended
     THREAD_STATE_STOPPING,   ///< Thread signaled to stop
     THREAD_STATE_TERMINATED, ///< Thread has terminated
-    THREAD_STATE_FAILED     ///< Thread encountered an error
+    THREAD_STATE_FAILED,     ///< Thread encountered an error
+    THREAD_STATE_UNKNOWN     ///< Thread state is unknown
 } ThreadState;
 
 typedef struct ThreadRegistryEntry {
-    const AppThread_T* thread;          // Thread configuration
+    const ThreadConfig* thread;       // Thread configuration
     PlatformThreadHandle handle;        // Thread handle
     ThreadState state;                  // Current thread state
     bool auto_cleanup;                  // Auto cleanup flag
@@ -37,68 +38,31 @@ typedef struct ThreadRegistryEntry {
     PlatformEvent_T completion_event;   // Event signaled on thread completion
 } ThreadRegistryEntry;
 
-typedef struct ThreadRegistry {
-    ThreadRegistryEntry* head;           // Head of registry entries
-    PlatformMutex_T mutex;              // Registry lock
-    uint32_t count;                      // Number of registered threads
-} ThreadRegistry;
 
-// Helper function declaration
+ThreadRegistryError init_global_thread_registry(void);
+
+// Helper function declartion
 ThreadRegistryEntry* thread_registry_find_thread(
-    ThreadRegistry* registry, 
     const char* thread_label
 );
 
 // Core registry operations
-ThreadRegistryError thread_registry_init(ThreadRegistry* registry);
-void thread_registry_cleanup(ThreadRegistry* registry);
+void thread_registry_cleanup(void);
+ThreadRegistryError thread_registry_register(const ThreadConfig* thread, PlatformThreadHandle handle, bool auto_cleanup);
+ThreadRegistryError thread_registry_update_state(const char* thread_label, ThreadState new_state);
+ThreadState thread_registry_get_state(const char* thread_label);
+bool thread_registry_is_registered(const ThreadConfig* thread);
 
-ThreadRegistryError thread_registry_register(
-    ThreadRegistry* registry,
-    const AppThread_T* thread,
-    PlatformThreadHandle handle,
-    bool auto_cleanup
-);
+// Message queue operations - renamed to remove redundancy
+ThreadRegistryError init_queue(const char* thread_label);
+ThreadRegistryError push_message(const char* thread_label, const Message_T* message, uint32_t timeout_ms);
+ThreadRegistryError pop_message(const char* thread_label, Message_T* message, uint32_t timeout_ms);
 
-ThreadRegistryError thread_registry_update_state(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    ThreadState new_state
-);
+// Helper function for queue access
+MessageQueue_T* get_queue_by_label(const char* thread_label);
 
-ThreadState thread_registry_get_state(
-    ThreadRegistry* registry,
-    const char* thread_label
-);
 
-// Global registry access
-ThreadRegistry* get_thread_registry(void);
-ThreadRegistryError init_global_thread_registry(void);
-
-bool thread_registry_is_registered(
-    ThreadRegistry* registry,
-    const AppThread_T* thread
-);
-
-// Add message queue related functions
-ThreadRegistryError thread_registry_init_queue(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    uint32_t max_size
-);
-
-ThreadRegistryError thread_registry_push_message(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    const Message_T* message,
-    uint32_t timeout_ms
-);
-
-ThreadRegistryError thread_registry_pop_message(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    Message_T* message,
-    uint32_t timeout_ms
-);
+ThreadRegistryError thread_registry_wait_all(uint32_t timeout_ms);
+ThreadRegistryError thread_registry_wait_others(void);
 
 #endif // THREAD_REGISTRY_H

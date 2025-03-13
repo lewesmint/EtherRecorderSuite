@@ -25,6 +25,8 @@
 #include "platform_mutex.h"
 #include "platform_string.h"
 #include "platform_time.h"
+
+#include "thread_registry.h"
 #include "utils.h"
 #include "app_thread.h"
 #include "app_config.h"
@@ -49,6 +51,7 @@ typedef struct ThreadLogFile {
     char thread_label[MAX_PATH_LEN];
     FILE *log_fp;
     char log_file_name[MAX_PATH_LEN];
+    bool first_open;  // Track if this is the first successful open for this log file
 } ThreadLogFile;
 
 typedef enum LogTimestampGranularity {
@@ -65,10 +68,6 @@ typedef enum LogTimestampGranularity {
 bool g_trace_all = false;
 #endif
 
-PlatformCondition_T logger_thread_condition;
-PlatformMutex_T logger_thread_mutex;
-volatile bool logger_ready = false;
-
 PlatformMutex_T logging_mutex; // Mutex for thread safety
 static ThreadLogFile thread_log_files[MAX_THREADS + 1]; // +1 for the main application log file
 
@@ -76,7 +75,14 @@ static ThreadLogFile thread_log_files[MAX_THREADS + 1]; // +1 for the main appli
 static THREAD_LOCAL int g_timestamp_initialised = 0;
 
 static LogTimestampGranularity g_log_timestamp_granularity = LOG_TS_NANOSECOND;  // Default
-static LogLevel g_log_level = LOG_DEBUG; // Current log level
+
+
+#ifdef _DEBUG
+static LogLevel g_log_level = LOG_DEBUG;
+#else
+static LogLevel g_log_level = LOG_INFO;
+#endif
+
 static LogOutput g_log_output = LOG_OUTPUT_BOTH; // Log output destination
 int g_log_leading_zeros = 12;
 
@@ -237,7 +243,7 @@ static bool g_purge_logs_on_restart = false;
              entry->thread_label,
              entry->message);
          if (written > 0 && written < sizeof(log_buffer)) {
-             fwrite(log_buffer, 1, written, log_output);
+             stream_print(log_output, "%s", log_buffer);
          }
      }
      else {
@@ -250,7 +256,7 @@ static bool g_purge_logs_on_restart = false;
              entry->thread_label,
              entry->message);
          if (written > 0 && written < sizeof(log_buffer)) {
-             fwrite(log_buffer, 1, written, log_output);
+             stream_print(log_output, "%s", log_buffer);
          }
      }
  
@@ -282,21 +288,22 @@ static bool g_purge_logs_on_restart = false;
   */
  void set_log_thread_file(const char *label, const char *filename) {
      lock_mutex(&logging_mutex); // Lock the mutex
- 
+
      if (g_thread_log_file_count >= MAX_THREADS) {
          // Maximum number of threads reached
          unlock_mutex(&logging_mutex); // Unlock the mutex
          return;
      }
- 
+
      strncpy(thread_log_files[g_thread_log_file_count].thread_label, label, sizeof(thread_log_files[g_thread_log_file_count].thread_label) - 1);
      strncpy(thread_log_files[g_thread_log_file_count].log_file_name, filename, sizeof(thread_log_files[g_thread_log_file_count].log_file_name) - 1);
      // Don't open yet, leave it to the first log message in the context of the logger.
      thread_log_files[g_thread_log_file_count].log_fp = NULL;   
- 
+     thread_log_files[g_thread_log_file_count].first_open = false;  // Add initialization of first_open
+
      // incremented each time we learn of a thread that needed logging
      g_thread_log_file_count++;
- 
+
      unlock_mutex(&logging_mutex); // Unlock the mutex
  }
  
@@ -310,11 +317,10 @@ static bool g_purge_logs_on_restart = false;
      snprintf(file_config_key, sizeof(file_config_key), "%s." CONFIG_LOG_FILE_KEY, thread_label);
      const char* config_thread_log_file = get_config_string("logger", file_config_key, NULL);
      const char* config_thread_log_path = get_config_string("logger", CONFIG_LOG_PATH_KEY, NULL);
- 
+
      /* Read log level from config */
      const char* config_log_level = get_config_string("logger", "log_level", NULL);
-     g_log_level = log_level_from_string(config_log_level, LOG_INFO); // Default to LOG_INFO if not set
- 
+     g_log_level = log_level_from_string(config_log_level, g_log_level);
  #ifdef _DEBUG
      g_trace_all = get_config_bool("debug", "trace_on", false);
  #endif
@@ -368,12 +374,12 @@ static bool g_purge_logs_on_restart = false;
          // its open already
          return true;
      }
- 
+
      static int log_failure_count = 0; // Counter for log failures
      static int directory_creation_failure_count = 0; // Counter for directory creation failures
- 
+
      char directory_path[MAX_PATH_LEN];
- 
+
      // Strip the directory path from the full file path
      strip_directory_path(p_log_file->log_file_name, directory_path, sizeof(directory_path));
      
@@ -385,7 +391,7 @@ static bool g_purge_logs_on_restart = false;
              directory_creation_failure_count++;
          }
      }
- 
+
      char* mode = "a"; // Append mode by default
      if (g_purge_logs_on_restart) {
          mode = "w"; // Overwrite mode if purge_logs_on_restart is true
@@ -393,25 +399,25 @@ static bool g_purge_logs_on_restart = false;
      p_log_file->log_fp = fopen(p_log_file->log_file_name, mode);
      if (p_log_file->log_fp == NULL) {
          if (log_failure_count == 0) {
-             char error_buffer[LOG_MSG_BUFFER_SIZE];
-             size_t written = (size_t)snprintf(error_buffer, sizeof(error_buffer), 
-                 "Failed to open log file: %s\n", p_log_file->log_file_name);
-             if (written > 0 && written < sizeof(error_buffer)) {
-                 fwrite(error_buffer, 1, written, stderr);
-             }
+             stream_print(stderr, "Failed to open log file: %s\n", p_log_file->log_file_name);
          }
- 
          log_failure_count++;
          if (log_failure_count >= MAX_LOG_FAILURES) {
-             char error_message[LOG_MSG_BUFFER_SIZE];
-             snprintf(error_message, sizeof(error_message), "Unrecoverable failure to open log file: %s\n. Exiting\n", p_log_file->log_file_name);
-             stream_print(stderr, error_message);
-             exit(EXIT_FAILURE); // Exit if logging is impossible over 100 iterations
+             stream_print(stderr, "Unrecoverable failure to open log file: %s\n. Exiting\n", p_log_file->log_file_name);
+             exit(EXIT_FAILURE);
          }
          return false;
-     } else {
-         log_failure_count = 0; // Reset the counter on successful log file open
      }
+
+     // Reset failure counter on success
+     log_failure_count = 0;
+
+     // Print success message only on first successful open
+     if (!p_log_file->first_open) {
+         stream_print(stdout, "Successfully opened log file: %s\n", p_log_file->log_file_name);
+         p_log_file->first_open = true;
+     }
+
      return true;
  }
  
@@ -476,50 +482,60 @@ static bool g_purge_logs_on_restart = false;
   */
  static void log_immediately(const LogEntry_T* entry) {
      lock_mutex(&logging_mutex);
- 
+
      if (!entry || entry->message[0] == '\0') {
          char error_buffer[LOG_MSG_BUFFER_SIZE];
          size_t written = (size_t)snprintf(error_buffer, sizeof(error_buffer), 
              "Log Error: Attempted to log NULL or blank message\n");
          if (written > 0 && written < sizeof(error_buffer)) {
-             fwrite(error_buffer, 1, written, stderr);
+             stream_print(stderr, "%s", error_buffer);
          }
          unlock_mutex(&logging_mutex);
          return;
      }
- 
+
      const char* thread_label = entry && entry->thread_label[0] != '\0' ? 
                                entry->thread_label : get_thread_label();
      ThreadLogFile* tlf = &thread_log_files[APP_LOG_FILE_INDEX];
- 
-     /* Rotate & open the main log file if needed */
-     if (tlf->log_fp) rotate_log_file_if_needed(tlf);
-     if (!open_log_file_if_needed(tlf)) {
-         g_log_output = LOG_OUTPUT_SCREEN; // Fallback to screen logging
-     }
- 
-     /* Check if the current thread has a specific log file */
-     for (int i = 1; i <= g_thread_log_file_count; i++) {
-         if (thread_label && strcmp_nocase(thread_log_files[i].thread_label, thread_label) == 0) {
-             if (thread_log_files[i].log_fp) rotate_log_file_if_needed(&thread_log_files[i]);
-             if (!open_log_file_if_needed(&thread_log_files[i])) {
-                 stream_print(stderr, "File Error: Could not open log file for thread %s\n", thread_label);
+
+     bool can_log_to_file = true;
+     LogOutput current_output = g_log_output;  // Use a temporary variable
+    
+     /* Check if we have a valid filename before attempting file operations */
+     if (!tlf->log_file_name[0]) {
+         can_log_to_file = false;
+         current_output = LOG_OUTPUT_SCREEN;  // Temporary fallback to screen logging
+     } else {
+         /* Rotate & open the main log file if needed */
+         if (tlf->log_fp) rotate_log_file_if_needed(tlf);
+         if (!open_log_file_if_needed(tlf)) {
+             can_log_to_file = false;
+             current_output = LOG_OUTPUT_SCREEN;  // Temporary fallback to screen logging
+         }
+
+         /* Check if the current thread has a specific log file */
+         for (int i = 1; i <= g_thread_log_file_count; i++) {
+             if (thread_label && strcmp_nocase(thread_log_files[i].thread_label, thread_label) == 0) {
+                 if (thread_log_files[i].log_fp) rotate_log_file_if_needed(&thread_log_files[i]);
+                 if (!open_log_file_if_needed(&thread_log_files[i])) {
+                     stream_print(stderr, "File Error: Could not open log file for thread %s\n", thread_label);
+                 }
+                 tlf = &thread_log_files[i];
+                 break;
              }
-             tlf = &thread_log_files[i];
-             break;
          }
      }
- 
-     /* Log to file if enabled */
-     if (g_log_output == LOG_OUTPUT_FILE || g_log_output == LOG_OUTPUT_BOTH) {
+
+     /* Log to file if enabled and filename is valid */
+     if (can_log_to_file && (current_output == LOG_OUTPUT_FILE || current_output == LOG_OUTPUT_BOTH)) {
          publish_log_entry(entry, tlf->log_fp);
      }
- 
+
      /* Log to screen if enabled */
-     if (g_log_output == LOG_OUTPUT_SCREEN || g_log_output == LOG_OUTPUT_BOTH) {
+     if (current_output == LOG_OUTPUT_SCREEN || current_output == LOG_OUTPUT_BOTH) {
          publish_log_entry(entry, stderr);
      }
- 
+
      unlock_mutex(&logging_mutex);
  }
  
@@ -713,45 +729,11 @@ static bool g_purge_logs_on_restart = false;
      return log_level_to_string(level);
  }
 
-// void* logger_thread_function(void* arg) {
-//     AppThread_T* thread_info = (AppThread_T*)arg;
-//     set_thread_label(thread_info->label);
-//     logger_log(LOG_INFO, "Logger thread started");
-
-//     // Initialize logger condition and mutex
-//     platform_mutex_lock(&logger_thread_mutex);
-//     logger_ready = true;
-//     platform_cond_broadcast(&logger_thread_condition);
-//     platform_mutex_unlock(&logger_thread_mutex);
-
-//     LogEntry_T entry;
-//     bool running = true;
-
-//     while (running && !shutdown_signalled()) {
-//         if (log_queue_pop(&global_log_queue, &entry)) {
-//             // Process and write log entry
-//             process_log_entry(&entry);
-//         } else {
-//             // No entries, sleep briefly
-//             sleep_ms(1);
-//         }
-//     }
-
-//     logger_log(LOG_INFO, "Logger thread shutting down");
-//     return NULL;
-// }
-
-void* logger_thread_function(void* arg) {
+static void* logger_thread_function(void* arg) {
     (void)arg;
-    // AppThread_T* thread_info = (AppThread_T*)arg;
-    //set_thread_label(thread_info->label);
     logger_log(LOG_INFO, "Logger thread started");
 
-    platform_mutex_lock(&logger_thread_mutex);
-    platform_cond_broadcast(&logger_thread_condition);
-    logger_ready = true;
-    platform_mutex_unlock(&logger_thread_mutex);
-
+    // No more condition/flag needed - thread registry state is enough
     LogEntry_T entry;
     bool running = true;
 
@@ -769,9 +751,23 @@ void* logger_thread_function(void* arg) {
         }
     }
 
-    wait_for_all_other_threads_to_complete();
+    thread_registry_wait_others(); // Wait for all other threads to complete
     
     logger_log(LOG_INFO, "Logger thread shutting down.");
     stream_print(stdout, "Logger thread bye bye.\n");
     return (void*)THREAD_SUCCESS;
+}
+
+static ThreadConfig logger_thread;
+
+ThreadConfig* get_logger_thread(void) {
+    static bool initialized = false;
+    if (!initialized) {
+        logger_thread = ThreadConfigemplate;
+        logger_thread.label = "LOGGER";
+        logger_thread.func = logger_thread_function;
+        logger_thread.suppressed = false;  // Logger cannot be suppressed
+        initialized = true;
+    }
+    return &logger_thread;
 }

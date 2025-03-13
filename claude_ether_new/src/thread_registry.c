@@ -1,9 +1,21 @@
 #include "thread_registry.h"
-#include "message_types.h"  // Add this for Message_T and MessageQueue_T definitions
-#include "logger.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+#include "platform_error.h"
+#include "platform_sync.h"
+
+#include "message_types.h"
+#include "app_error.h"
+#include "logger.h"
+
+typedef struct ThreadRegistry {
+    ThreadRegistryEntry* head;          // Head of registry entries
+    PlatformMutex_T mutex;              // Registry lock
+    uint32_t count;                     // Number of registered threads
+} ThreadRegistry;
 
 static ThreadRegistry g_registry = {0};
 bool g_registry_initialized = false;
@@ -34,26 +46,8 @@ static bool validate_state_transition(ThreadState current, ThreadState new) {
     }
 }
 
-ThreadRegistryError thread_registry_init(ThreadRegistry* registry) {
-    if (!registry) {
-        return THREAD_REG_INVALID_ARGS;
-    }
-
-    registry->head = NULL;
-    registry->count = 0;
-
-    if (platform_mutex_init(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
-        return THREAD_REG_LOCK_ERROR;
-    }
-
-    return THREAD_REG_SUCCESS;
-}
-
-ThreadRegistryEntry* thread_registry_find_thread(
-    ThreadRegistry* registry, 
-    const char* thread_label
-) {
-    ThreadRegistryEntry* current = registry->head;
+ThreadRegistryEntry* thread_registry_find_thread(const char* thread_label) {
+    ThreadRegistryEntry* current = g_registry.head;
     while (current) {
         if (strcmp(current->thread->label, thread_label) == 0) {
             return current;
@@ -64,34 +58,37 @@ ThreadRegistryEntry* thread_registry_find_thread(
 }
 
 ThreadRegistryError thread_registry_register(
-    ThreadRegistry* registry,
-    const AppThread_T* thread,
+    const ThreadConfig* thread,
     PlatformThreadHandle handle,
     bool auto_cleanup
 ) {
-    if (!registry || !thread || !handle || !validate_thread_label(thread->label)) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    if (!thread || !handle || !validate_thread_label(thread->label)) {
         return THREAD_REG_INVALID_ARGS;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    if (thread_registry_find_thread(registry, thread->label)) {
-        platform_mutex_unlock(&registry->mutex);
+    if (thread_registry_find_thread(thread->label)) {
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_DUPLICATE_THREAD;
     }
 
     ThreadRegistryEntry* entry = calloc(1, sizeof(ThreadRegistryEntry));
     if (!entry) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
     // Create completion event - manual reset, initially not signaled
     if (platform_event_create(&entry->completion_event, true, false) != PLATFORM_ERROR_SUCCESS) {
         free(entry);
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
@@ -99,38 +96,41 @@ ThreadRegistryError thread_registry_register(
     entry->handle = handle;
     entry->state = THREAD_STATE_CREATED;
     entry->auto_cleanup = auto_cleanup;
-    entry->next = registry->head;
+    entry->next = g_registry.head;
     
-    registry->head = entry;
-    registry->count++;
+    g_registry.head = entry;
+    g_registry.count++;
 
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
     
     logger_log(LOG_INFO, "Thread '%s' registered successfully", thread->label);
     return THREAD_REG_SUCCESS;
 }
 
 ThreadRegistryError thread_registry_update_state(
-    ThreadRegistry* registry,
     const char* thread_label,
     ThreadState new_state
 ) {
-    if (!registry || !validate_thread_label(thread_label)) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    if (!validate_thread_label(thread_label)) {
         return THREAD_REG_INVALID_ARGS;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
     if (!entry) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_NOT_FOUND;
     }
 
     if (!validate_state_transition(entry->state, new_state)) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_INVALID_STATE_TRANSITION;
     }
 
@@ -141,30 +141,31 @@ ThreadRegistryError thread_registry_update_state(
         platform_event_set(entry->completion_event);
     }
 
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
     return THREAD_REG_SUCCESS;
 }
 
-ThreadState thread_registry_get_state(
-    ThreadRegistry* registry,
-    const char* thread_label
-) {
-    if (!registry || !validate_thread_label(thread_label)) {
-        return THREAD_STATE_FAILED;
+ThreadState thread_registry_get_state(const char* thread_label) {
+    if (!g_registry_initialized) {
+        return THREAD_STATE_UNKNOWN;
     }
+    
+    platform_mutex_lock(&g_registry.mutex);
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
-        return THREAD_STATE_FAILED;
+    ThreadState state = THREAD_STATE_UNKNOWN;
+    
+    ThreadRegistryEntry* entry = g_registry.head;
+    while (entry != NULL) {
+        if (entry->thread && entry->thread->label && 
+            strcmp(entry->thread->label, thread_label) == 0) {
+            state = entry->state;
+            break;
+        }
+        entry = entry->next;
     }
-
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
-    ThreadState state = THREAD_STATE_FAILED;
-
-    if (entry) {
-        state = entry->state;
-    }
-
-    platform_mutex_unlock(&registry->mutex);
+    
+    platform_mutex_unlock(&g_registry.mutex);
+    
     return state;
 }
 
@@ -177,57 +178,58 @@ ThreadRegistryError init_global_thread_registry(void) {
         return THREAD_REG_SUCCESS;
     }
 
-    ThreadRegistryError err = thread_registry_init(&g_registry);
-    if (err == THREAD_REG_SUCCESS) {
-        g_registry_initialized = true;
-    }
+    g_registry.head = NULL;
+    g_registry.count = 0;
 
-    return err;
-}
-
-ThreadRegistryError thread_registry_wait_for_thread(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    uint32_t timeout_ms
-) {
-    if (!registry || !validate_thread_label(thread_label)) {
-        return THREAD_REG_INVALID_ARGS;
-    }
-
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_init(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
-    if (!entry) {
-        platform_mutex_unlock(&registry->mutex);
-        return THREAD_REG_NOT_FOUND;
-    }
-
-    // Get the event while holding the mutex
-    PlatformEvent_T completion_event = entry->completion_event;
-    platform_mutex_unlock(&registry->mutex);
-
-    // Wait for the completion event
-    PlatformErrorCode result = platform_event_wait(completion_event, timeout_ms);
-    
-    if (result == PLATFORM_ERROR_TIMEOUT) {
-        return THREAD_REG_TIMEOUT;
-    } else if (result != PLATFORM_ERROR_SUCCESS) {
-        return THREAD_REG_WAIT_ERROR;
-    }
-
+    g_registry_initialized = true;
     return THREAD_REG_SUCCESS;
 }
 
-void thread_registry_cleanup(ThreadRegistry* registry) {
-    if (!registry) {
+ThreadRegistryError thread_registry_wait_for_thread(
+    const char* thread_label,
+    uint32_t timeout_ms
+) {
+    if (!validate_thread_label(thread_label)) {
+        return THREAD_REG_INVALID_ARGS;
+    }
+
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
+        return THREAD_REG_LOCK_ERROR;
+    }
+
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
+    if (!entry) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_NOT_FOUND;
+    }
+
+    PlatformEvent_T completion_event = entry->completion_event;
+    platform_mutex_unlock(&g_registry.mutex);
+
+    PlatformWaitResult result = platform_wait_single(completion_event, timeout_ms);
+    
+    switch (result) {
+        case PLATFORM_WAIT_SUCCESS:
+            return THREAD_REG_SUCCESS;
+        case PLATFORM_WAIT_TIMEOUT:
+            return THREAD_REG_TIMEOUT;
+        default:
+            return THREAD_REG_WAIT_ERROR;
+    }
+}
+
+void thread_registry_cleanup(void) {
+    if (!g_registry_initialized) {
         return;
     }
 
-    platform_mutex_lock(&registry->mutex);
+    platform_mutex_lock(&g_registry.mutex);
 
-    ThreadRegistryEntry* current = registry->head;
+    ThreadRegistryEntry* current = g_registry.head;
     ThreadRegistryEntry* next;
 
     while (current) {
@@ -236,10 +238,18 @@ void thread_registry_cleanup(ThreadRegistry* registry) {
         // Destroy the completion event
         platform_event_destroy(current->completion_event);
 
+        // Clean up message queue if it exists
+        if (current->queue) {
+            platform_event_destroy(current->queue->not_empty_event);
+            platform_event_destroy(current->queue->not_full_event);
+            free(current->queue->entries);
+            free(current->queue);
+        }
+
         // Clean up thread if auto_cleanup is enabled
         if (current->auto_cleanup && current->thread) {
             if (current->thread->exit_func) {
-                current->thread->exit_func((void*)current->thread);  // Cast to void*
+                current->thread->exit_func((void*)current->thread);
             }
             // The thread should be cleaned up by its owner
         }
@@ -248,61 +258,65 @@ void thread_registry_cleanup(ThreadRegistry* registry) {
         current = next;
     }
 
-    registry->head = NULL;
-    registry->count = 0;
+    g_registry.head = NULL;
+    g_registry.count = 0;
 
-    platform_mutex_unlock(&registry->mutex);
-    platform_mutex_destroy(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
+    platform_mutex_destroy(&g_registry.mutex);
+
+    g_registry_initialized = false;
 }
 
 bool thread_registry_is_registered(
-    ThreadRegistry* registry,
-    const AppThread_T* thread
+    const ThreadConfig* thread
 ) {
-    if (!registry || !thread || !validate_thread_label(thread->label)) {
+    if (!g_registry_initialized || !thread || !validate_thread_label(thread->label)) {
         return false;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return false;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread->label);
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread->label);
     bool is_registered = (entry != NULL);
 
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
     return is_registered;
 }
 
-ThreadRegistryError thread_registry_init_queue(
-    ThreadRegistry* registry,
-    const char* thread_label,
-    uint32_t max_size
+ThreadRegistryError init_queue(
+    const char* thread_label
 ) {
-    if (!registry || !validate_thread_label(thread_label) || max_size == 0) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    uint32_t max_size = 1024;  // Default size
+    if (!validate_thread_label(thread_label) || max_size == 0) {
         return THREAD_REG_INVALID_ARGS;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
     if (!entry) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_NOT_FOUND;
     }
 
     // Don't recreate if queue already exists
     if (entry->queue) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_SUCCESS;
     }
 
     // Allocate queue structure
     entry->queue = (MessageQueue_T*)calloc(1, sizeof(MessageQueue_T));
     if (!entry->queue) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
@@ -311,14 +325,15 @@ ThreadRegistryError thread_registry_init_queue(
     if (!entry->queue->entries) {
         free(entry->queue);
         entry->queue = NULL;
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
-    // Initialize queue
+    // Initialize queue fields
     entry->queue->max_size = max_size;
     entry->queue->head = 0;
     entry->queue->tail = 0;
+    entry->queue->owner_label = thread_label;  // Set the owner label
 
     // Create synchronization events
     PlatformErrorCode err = platform_event_create(&entry->queue->not_empty_event, false, false);
@@ -326,7 +341,7 @@ ThreadRegistryError thread_registry_init_queue(
         free(entry->queue->entries);
         free(entry->queue);
         entry->queue = NULL;
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
@@ -336,36 +351,39 @@ ThreadRegistryError thread_registry_init_queue(
         free(entry->queue->entries);
         free(entry->queue);
         entry->queue = NULL;
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_CREATION_FAILED;
     }
 
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
     return THREAD_REG_SUCCESS;
 }
 
-ThreadRegistryError thread_registry_push_message(
-    ThreadRegistry* registry,
+ThreadRegistryError push_message(
     const char* thread_label,
     const Message_T* message,
     uint32_t timeout_ms
 ) {
-    if (!registry || !validate_thread_label(thread_label) || !message) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    if (!validate_thread_label(thread_label) || !message) {
         return THREAD_REG_INVALID_ARGS;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
     if (!entry || !entry->queue) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_NOT_FOUND;
     }
 
     MessageQueue_T* queue = entry->queue;
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
 
     if (!message_queue_push(queue, message, timeout_ms)) {
         return THREAD_REG_QUEUE_FULL;
@@ -374,32 +392,162 @@ ThreadRegistryError thread_registry_push_message(
     return THREAD_REG_SUCCESS;
 }
 
-ThreadRegistryError thread_registry_pop_message(
-    ThreadRegistry* registry,
+ThreadRegistryError pop_message(
     const char* thread_label,
     Message_T* message,
     uint32_t timeout_ms
 ) {
-    if (!registry || !validate_thread_label(thread_label) || !message) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    if (!validate_thread_label(thread_label) || !message) {
         return THREAD_REG_INVALID_ARGS;
     }
 
-    if (platform_mutex_lock(&registry->mutex) != PLATFORM_ERROR_SUCCESS) {
+    PlatformThreadHandle current = platform_thread_get_handle();
+    
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
         return THREAD_REG_LOCK_ERROR;
     }
 
-    ThreadRegistryEntry* entry = thread_registry_find_thread(registry, thread_label);
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
     if (!entry || !entry->queue) {
-        platform_mutex_unlock(&registry->mutex);
+        platform_mutex_unlock(&g_registry.mutex);
         return THREAD_REG_NOT_FOUND;
     }
 
+    if (entry->handle != current) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_UNAUTHORIZED;
+    }
+
     MessageQueue_T* queue = entry->queue;
-    platform_mutex_unlock(&registry->mutex);
+    platform_mutex_unlock(&g_registry.mutex);
 
     if (!message_queue_pop(queue, message, timeout_ms)) {
         return THREAD_REG_QUEUE_EMPTY;
     }
 
     return THREAD_REG_SUCCESS;
+}
+
+MessageQueue_T* get_queue_by_label(const char* thread_label) {
+    if (!validate_thread_label(thread_label)) {
+        return NULL;
+    }
+
+
+    if (platform_mutex_lock(&g_registry.mutex) != PLATFORM_ERROR_SUCCESS) {
+        return NULL;
+    }
+
+    ThreadRegistryEntry* entry = thread_registry_find_thread(thread_label);
+    MessageQueue_T* queue = entry ? entry->queue : NULL;
+
+    platform_mutex_unlock(&g_registry.mutex);
+    return queue;
+}
+
+ThreadRegistryError thread_registry_wait_all(uint32_t timeout_ms) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    platform_mutex_lock(&g_registry.mutex);
+    
+    // Count and collect active thread handles
+    uint32_t active_count = 0;
+    ThreadRegistryEntry* entry = g_registry.head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_SUCCESS;
+    }
+    
+    // Allocate handles array
+    PlatformThreadHandle* handles = malloc(active_count * sizeof(PlatformThreadHandle));
+    if (!handles) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_ALLOCATION_FAILED;
+    }
+    
+    // Collect handles
+    uint32_t i = 0;
+    entry = g_registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state != THREAD_STATE_TERMINATED) {
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&g_registry.mutex);
+    
+    // Wait for all threads
+    PlatformWaitResult result = platform_wait_multiple(handles, active_count, true, timeout_ms);
+    free(handles);
+    
+    switch (result) {
+        case PLATFORM_WAIT_SUCCESS:
+            return THREAD_REG_SUCCESS;
+        case PLATFORM_WAIT_TIMEOUT:
+            return THREAD_REG_TIMEOUT;
+        default:
+            return THREAD_REG_WAIT_ERROR;
+    }
+}
+
+ThreadRegistryError thread_registry_wait_others(void) {
+    if (!g_registry_initialized) {
+        return THREAD_REG_NOT_INITIALIZED;
+    }
+
+    PlatformThreadHandle current_handle = platform_thread_get_handle();
+
+    platform_mutex_lock(&g_registry.mutex);
+    
+    uint32_t active_count = 0;
+    ThreadRegistryEntry* entry = g_registry.head;
+    while (entry != NULL) {
+        if (entry->state != THREAD_STATE_TERMINATED && 
+            entry->handle != current_handle) {  // Compare handles instead of labels
+            active_count++;
+        }
+        entry = entry->next;
+    }
+    
+    if (active_count == 0) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_SUCCESS;
+    }
+    
+    PlatformThreadHandle* handles = malloc(active_count * sizeof(PlatformThreadHandle));
+    if (!handles) {
+        platform_mutex_unlock(&g_registry.mutex);
+        return THREAD_REG_ALLOCATION_FAILED;
+    }
+    
+    uint32_t i = 0;
+    entry = g_registry.head;
+    while (entry != NULL && i < active_count) {
+        if (entry->state != THREAD_STATE_TERMINATED && 
+            entry->handle != current_handle) {  // Compare handles instead of labels
+            handles[i++] = entry->handle;
+        }
+        entry = entry->next;
+    }
+    
+    platform_mutex_unlock(&g_registry.mutex);
+    
+    PlatformWaitResult result = platform_wait_multiple(handles, active_count, true, PLATFORM_WAIT_INFINITE);
+    free(handles);
+    
+    return (result == PLATFORM_WAIT_SUCCESS) ? THREAD_REG_SUCCESS : THREAD_REG_WAIT_ERROR;
 }

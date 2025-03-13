@@ -81,6 +81,11 @@ PlatformErrorCode platform_thread_detach(PlatformThreadHandle handle)
     return PLATFORM_ERROR_SUCCESS;
 }
 
+PlatformThreadHandle platform_thread_get_handle(void) 
+{
+    return (PlatformThreadHandle)pthread_self();
+}
+
 PlatformThreadId platform_thread_get_id(void) 
 {
     return (PlatformThreadId)pthread_self();

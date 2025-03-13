@@ -22,7 +22,7 @@ The platform abstraction layer provides a consistent interface across different 
 
 ### Threading System
 Advanced thread management system supporting:
-- Thread groups for coordinated operations
+- Thread groups through master-member relationships
 - Resource lifecycle management
 - Message routing between threads
 - See: [Thread Coordination Design](THREAD_COORDINATION.md)
@@ -77,7 +77,7 @@ claude_ether_original/
 
 ### Thread Registry
 - Global thread management
-- Group coordination
+- Group coordination through master thread handles
 - Resource tracking
 - Shutdown sequencing
 
