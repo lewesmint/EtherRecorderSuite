@@ -1,66 +1,73 @@
-import glob, platform
-import os
+import glob, platform, re
+# This script switches platform-specific configurations in VSCode JSON files
 
-print("Platform switch script starting...")
+# Determine current platform
+system = platform.system().lower()
+current_platform = {"darwin": "MacOS", "windows": "Windows"}.get(system, "Linux")
+print(f"Platform switch script: detected {current_platform}")
 
-is_windows = platform.system().lower() == "windows"
-section = "Windows" if is_windows else "MacOS"
-
-def process_file(file_path, lines):
-    """Process file contents based on file type"""
-    ext = os.path.splitext(file_path)[1].lower()
-    
-    # For JSON files, we need to handle the entire file differently
-    if ext == '.json':
-        with open(file_path, 'w') as f:
-            in_platform_switch = False
-            in_other_platform = False
-            
-            for line in lines:
-                if "PLATFORM_SWITCH_START" in line:
-                    in_platform_switch = True
-                    f.write(line.lstrip("/"))
-                elif "PLATFORM_SWITCH_END" in line:
-                    in_platform_switch = False
-                    f.write(line.lstrip("/"))
-                elif in_platform_switch:
-                    if section in line:
-                        # We're in the correct platform section
-                        in_other_platform = False
-                        f.write(line.lstrip("/"))
-                    elif "Configuration" in line:
-                        # This is a platform section header
-                        if section not in line:
-                            in_other_platform = True
-                        f.write(line.lstrip("/"))
-                    else:
-                        # If we're in the other platform's section, comment it
-                        if in_other_platform:
-                            f.write("//" + line.lstrip("/"))
-                        else:
-                            f.write(line.lstrip("/"))
-                else:
-                    # Outside platform switch block, uncomment everything
-                    f.write(line.lstrip("/"))
-    else:
-        # For non-JSON files, use the original logic
-        with open(file_path, 'w') as f:
-            for line in lines:
-                if "PLATFORM_SWITCH_START" in line or "PLATFORM_SWITCH_END" in line:
-                    f.write(line)
-                elif section in line or "PLATFORM_SWITCH" in line:
-                    f.write(line.lstrip("/"))
-                else:
-                    f.write("//" + line.lstrip("/"))
-
-# Process all relevant files
-for file in glob.glob("**/.vscode/settings.json", recursive=True) + \
-            glob.glob("**/.vscode/c_cpp_properties.json", recursive=True) + \
-            glob.glob("**/.vscode/launch.json", recursive=True):
-    print(f"Processing {file}")
-    with open(file, 'r') as f:
+def process_file(file_path):
+    """Process a VSCode config file for platform switching"""
+    with open(file_path) as f:
         lines = f.readlines()
-    process_file(file, lines)
+    
+    result = []
+    in_switch_block = False
+    current_section = None
+    
+    for line in lines:
+        # Handle switch markers
+        if "PLATFORM_SWITCH_START" in line:
+            in_switch_block = True
+            result.append(line)
+            continue
+        if "PLATFORM_SWITCH_END" in line:
+            in_switch_block = False
+            result.append(line)
+            continue
+        if not in_switch_block:
+            result.append(line)
+            continue
+            
+        # Inside switch block - handle section headers
+        if "Configuration" in line:
+            match = re.search(r'(\w+)\s+Configuration', line)
+            if match:
+                current_section = match[1]
+            result.append(line)
+            continue
+            
+        # Skip empty lines or unknown sections
+        if not current_section or not line.strip():
+            result.append(line)
+            continue
+        
+        # Process platform-specific config lines
+        is_active = current_section == current_platform
+        is_commented = "//" in line
+        
+        if is_active and is_commented:
+            # Uncomment active platform lines - only remove the //
+            result.append(line.replace("//", "", 1))
+        elif not is_active and not is_commented:
+            # Comment inactive platform lines - preserve indentation
+            indent = re.match(r'^\s*', line).group(0)
+            content = line[len(indent):]
+            result.append(f"{indent}//{content}")
+        else:
+            result.append(line)
+    
+    with open(file_path, 'w') as f:
+        f.writelines(result)
+
+# Find and process relevant VSCode config files
+config_patterns = ["settings.json", "c_cpp_properties.json", "launch.json"]
+vscode_files = [f for f in glob.glob("**/.vscode/*.json", recursive=True) 
+               if any(p in f for p in config_patterns)]
+
+for file in vscode_files:
+    print(f"Processing {file}")
+    process_file(file)
     print(f"Updated {file}")
 
-print("Platform switch script completed.")
+print("Platform switch complete")
