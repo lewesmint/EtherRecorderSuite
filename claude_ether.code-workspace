@@ -1,0 +1,26 @@
+{
+    "folders": [
+        {
+            "path": "platform_layer",
+            "name": "Platform Layer Lib"
+        },
+        {
+            "path": "claude_ether_new",
+            "name": "Claude Ether New"
+        },
+        {
+            "path": "claude_ether_original"
+			"name": "Claude Ether Ol (Broken)"
+        },
+        {
+            "path": "scripts"
+        }
+    ],
+    "settings": {
+        "cmake.autoSelectActiveFolder": true,
+        "cmake.configureOnOpen": true,
+        "cmake.beforeConfigure": [
+            "Run Platform Switch Script"
+        ]
+    }
+}

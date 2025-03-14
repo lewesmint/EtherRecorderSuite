@@ -11,7 +11,7 @@
       "problemMatcher": [],
       "group": "none",
       "presentation": {
-        "reveal": "silent",
+        "reveal": "always",
         "panel": "shared"
       }
     },

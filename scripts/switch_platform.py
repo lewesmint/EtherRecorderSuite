@@ -1,5 +1,7 @@
 import glob, platform
 
+print("Platform switch script starting...")
+
 is_windows = platform.system().lower() == "windows"
 section = "Windows" if is_windows else "MacOS"
 
@@ -16,3 +18,5 @@ for file in glob.glob("**/.vscode/settings.json", recursive=True) + glob.glob("*
             else:
                 f.write("//" + line.lstrip("/"))
     print(f"Updated {file}")
+
+print("Platform switch script completed.")

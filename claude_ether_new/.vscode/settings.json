@@ -18,23 +18,4 @@
     //"C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
     //"C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
     // PLATFORM_SWITCH_END
-
-    "cmake.defaultVariants": {
-        "buildType": {
-            "default": "macos-arm64-debug",
-            "description": "The build type.",
-            "choices": {
-                "macos-arm64-debug": {
-                    "short": "Mac ARM64 Debug",
-                    "long": "MacOS ARM64 Debug",
-                    "buildType": "Debug"
-                },
-                "macos-arm64-release": {
-                    "short": "Mac ARM64 Release",
-                    "long": "MacOS ARM64 Release",
-                    "buildType": "Release"
-                }
-            }
-        }
-    }
 }
