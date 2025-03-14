@@ -6,7 +6,6 @@
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
 
-    // Common include paths that work for both platforms
     "C_Cpp.default.includePath": [
         "${workspaceFolder}/inc",
         "${workspaceFolder}/windows/inc",
@@ -16,11 +15,11 @@
 
     // PLATFORM_SWITCH_START
     // MacOS Configuration
-    "C_Cpp.default.compilerPath": "/usr/bin/clang",
-    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+    //"C_Cpp.default.compilerPath": "/usr/bin/clang",
+    //"C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
 
     // Windows Configuration
-    //"C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
-    //"C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
+    "C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64"
     // PLATFORM_SWITCH_END
 }
