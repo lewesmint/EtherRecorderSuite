@@ -29,6 +29,9 @@
             "intelliSenseMode": "macos-clang-arm64",
             "configurationProvider": "ms-vscode.cmake-tools",
             "defines": [
+                "MACOS=1",
+                "POSIX=1",
+                "_DARWIN_C_SOURCE",
                 "true=1",
                 "false=0",
                 "__STDC_VERSION__=201710L"

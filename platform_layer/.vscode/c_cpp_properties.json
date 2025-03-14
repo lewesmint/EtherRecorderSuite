@@ -28,11 +28,12 @@
                 "MACOS=1",
                 "POSIX=1",
                 "_DARWIN_C_SOURCE",
+
                 "true=1",
                 "false=0",
                 "__STDC_VERSION__=201710L"
             ],
-            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json"
         },
         {
             "name": "Win32-ARM64",
