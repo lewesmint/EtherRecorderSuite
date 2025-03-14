@@ -233,11 +233,11 @@ PlatformErrorCode platform_path_to_native(char* path) {
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    // On POSIX systems, convert backslashes to forward slashes
+    // Convert Windows backslashes to forward slashes
     char* p = path;
     while (*p) {
         if (*p == '\\') {
-            *p = PATH_SEPARATOR;
+            *p = PATH_SEPARATOR;  // Will be '/' on POSIX systems
         }
         p++;
     }
@@ -260,7 +260,7 @@ PlatformErrorCode platform_fopen(FILE** file, const char* filename, const char* 
     
     *file = fopen(filename, mode);
     if (*file == NULL) {
-        return PLATFORM_ERROR_FILE_OPEN;
+        return PLATFORM_ERROR_FILE_ACCESS;  // Fixed: Changed from PLATFORM_ERROR_FILE_OPEN
     }
     
     return PLATFORM_ERROR_SUCCESS;

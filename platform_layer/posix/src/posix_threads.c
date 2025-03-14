@@ -15,12 +15,15 @@ void platform_thread_cleanup(void) {
 }
 
 PlatformErrorCode platform_thread_create(
-    PlatformThreadHandle* handle,
+    PlatformThreadId* thread_id,
     const PlatformThreadAttributes* attributes,
     PlatformThreadFunction function,
     void* arg) 
 {
-    pthread_t thread;
+    if (!thread_id) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
     pthread_attr_t attr;
     
     if (pthread_attr_init(&attr) != 0) {
@@ -42,6 +45,7 @@ PlatformErrorCode platform_thread_create(
         }
     }
 
+    pthread_t thread;
     int result = pthread_create(&thread, &attr, function, arg);
     pthread_attr_destroy(&attr);
 
@@ -49,7 +53,7 @@ PlatformErrorCode platform_thread_create(
         return PLATFORM_ERROR_THREAD_CREATE;
     }
 
-    *handle = (PlatformThreadHandle)(uintptr_t)thread;
+    *thread_id = (PlatformThreadId)thread;
     return PLATFORM_ERROR_SUCCESS;
 }
 

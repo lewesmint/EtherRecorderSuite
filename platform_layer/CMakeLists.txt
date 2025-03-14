@@ -1,12 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(platform_layer C)
 
-# Set C standard based on compiler
-if(MSVC)
-    set(CMAKE_C_STANDARD 17)
-else()
-    set(CMAKE_C_STANDARD 23)
-endif()
+# Set C standard consistently for all platforms
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -49,21 +45,25 @@ set(PLATFORM_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/macos/inc
 )
 
-# Windows-specific settings
-if(WIN32)
-    add_definitions(
-        -D_WIN32_WINNT=0x0600 
-        -DNOMINMAX 
-        -DWIN32_LEAN_AND_MEAN
-        -D_CRT_SECURE_NO_WARNINGS
+# Add platform-specific defines
+if(APPLE)
+    add_compile_definitions(
+        MACOS=1
+        POSIX=1
+        _DARWIN_C_SOURCE
     )
-
-    # Ensure proper runtime library selection for Windows
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
-    else()
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
-    endif()
+elseif(WIN32)
+    add_compile_definitions(
+        WIN32=1
+        _WIN32_WINNT=0x0600
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+else()
+    add_compile_definitions(
+        POSIX=1
+    )
 endif()
 
 # Platform-specific sources

@@ -5,12 +5,21 @@
     "cmake.configureOnOpen": true,
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
+
+    // Common include paths that work for both platforms
     "C_Cpp.default.includePath": [
         "${workspaceFolder}/inc",
         "${workspaceFolder}/windows/inc",
         "${workspaceFolder}/posix/inc",
         "${workspaceFolder}/macos/inc"
     ],
+
+    // MacOS Configuration
+    "C_Cpp.default.compilerPath": "/usr/bin/clang",
+    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+
+    /* Windows Configuration - Comment out MacOS section above and uncomment this section for Windows
     "C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
-    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64"
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
+    */
 }

@@ -208,12 +208,12 @@ ThreadRegistryError thread_registry_wait_for_thread(
     PlatformEvent_T completion_event = entry->completion_event;
     platform_mutex_unlock(&g_registry.mutex);
 
-    PlatformWaitResult result = platform_event_wait(completion_event, timeout_ms);
+    PlatformErrorCode result = platform_event_wait(completion_event, timeout_ms);
     
     switch (result) {
-        case PLATFORM_WAIT_SUCCESS:
+        case PLATFORM_ERROR_SUCCESS:
             return THREAD_REG_SUCCESS;
-        case PLATFORM_WAIT_TIMEOUT:
+        case PLATFORM_ERROR_TIMEOUT:
             return THREAD_REG_TIMEOUT;
         default:
             return THREAD_REG_WAIT_ERROR;

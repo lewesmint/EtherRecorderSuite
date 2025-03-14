@@ -1,12 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(ClaudeEther C)
 
-# Set C standard based on compiler
-if(MSVC)
-    set(CMAKE_C_STANDARD 17)
-else()
-    set(CMAKE_C_STANDARD 23)
-endif()
+# Set C standard consistently for all platforms
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -25,6 +21,27 @@ else()
     else()
         set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
     endif()
+endif()
+
+# Add platform-specific defines
+if(APPLE)
+    add_compile_definitions(
+        MACOS=1
+        POSIX=1
+        _DARWIN_C_SOURCE
+    )
+elseif(WIN32)
+    add_compile_definitions(
+        WIN32=1
+        _WIN32_WINNT=0x0600
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+else()
+    add_compile_definitions(
+        POSIX=1
+    )
 endif()
 
 # Set output directories

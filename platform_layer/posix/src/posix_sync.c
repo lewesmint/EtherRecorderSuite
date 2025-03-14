@@ -52,12 +52,12 @@ static void* thread_wait_wrapper(void* arg) {
     return NULL;
 }
 
-PlatformWaitResult platform_thread_wait_single(PlatformThreadHandle thread, uint32_t timeout_ms) {
+PlatformWaitResult platform_thread_wait_single(PlatformThreadId thread_id, uint32_t timeout_ms) {
     struct platform_thread_wait_context context;
     pthread_mutex_init(&context.mutex, NULL);
     pthread_cond_init(&context.cond, NULL);
     context.completed = false;
-    context.thread = thread;
+    context.thread = (pthread_t)thread_id;  // Direct cast since they're the same type
 
     // Create wrapper thread to handle the join
     pthread_t wrapper_thread;
@@ -89,10 +89,7 @@ PlatformWaitResult platform_thread_wait_single(PlatformThreadHandle thread, uint
     bool completed = context.completed;
     pthread_mutex_unlock(&context.mutex);
 
-    // Clean up wrapper thread (detach since we don't care about its result anymore)
     pthread_detach(wrapper_thread);
-    
-    // Clean up context
     pthread_mutex_destroy(&context.mutex);
     pthread_cond_destroy(&context.cond);
 
@@ -104,7 +101,10 @@ PlatformWaitResult platform_thread_wait_single(PlatformThreadHandle thread, uint
     return PLATFORM_WAIT_ERROR;
 }
 
-PlatformWaitResult platform_wait_multiple(PlatformThreadHandle *threads, uint32_t count, bool wait_all, uint32_t timeout_ms) {
+PlatformWaitResult platform_wait_multiple(PlatformThreadId *thread_list, 
+                                        uint32_t count, 
+                                        bool wait_all, 
+                                        uint32_t timeout_ms) {
     if (count == 0) {
         return PLATFORM_WAIT_SUCCESS;
     }
@@ -131,7 +131,8 @@ PlatformWaitResult platform_wait_multiple(PlatformThreadHandle *threads, uint32_
         
         for (size_t i = 0; i < count; i++) {
             if (!thread_done[i]) {
-                PlatformWaitResult result = platform_thread_wait_single(threads[i], wait_all ? 0 : time_left);
+                PlatformWaitResult result = platform_thread_wait_single(thread_list[i], 
+                                                                      wait_all ? 0 : time_left);
                 
                 if (result == PLATFORM_WAIT_SUCCESS) {
                     thread_done[i] = true;
@@ -376,12 +377,13 @@ PlatformErrorCode platform_event_wait(PlatformEvent_T event, uint32_t timeout_ms
     return PLATFORM_ERROR_SUCCESS;
 }
 
-PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t timeout_ms) {
-    if (!handle) {
+PlatformWaitResult platform_wait_single(PlatformThreadId thread_id, 
+                                      uint32_t timeout_ms) {
+    if (!thread_id) {
         return PLATFORM_WAIT_ERROR;
     }
 
-    pthread_mutex_t* mutex = (pthread_mutex_t*)handle;
+    pthread_mutex_t* mutex = (pthread_mutex_t*)thread_id;
     int result = 0;
     
     if (timeout_ms == PLATFORM_WAIT_INFINITE) {

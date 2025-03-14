@@ -7,26 +7,33 @@
     "cmake.buildDirectory": "${workspaceFolder}/build/${variant:buildType}",
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
-    "C_Cpp.default.compilerPath": "cl.exe",
-    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
     "cmake.sourceDirectory": "${workspaceFolder}",
+
+    // MacOS Configuration
+    "C_Cpp.default.compilerPath": "/usr/bin/clang",
+    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+
+    /* Windows Configuration - Comment out MacOS section above and uncomment this section for Windows
+    "C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
+    */
+
     "cmake.defaultVariants": {
         "buildType": {
-            "default": "windows-arm64-debug",
+            "default": "macos-arm64-debug",
             "description": "The build type.",
             "choices": {
-                "windows-arm64-debug": {
-                    "short": "Win ARM64 Debug",
-                    "long": "Windows ARM64 Debug",
+                "macos-arm64-debug": {
+                    "short": "Mac ARM64 Debug",
+                    "long": "MacOS ARM64 Debug",
                     "buildType": "Debug"
                 },
-                "windows-arm64-release": {
-                    "short": "Win ARM64 Release",
-                    "long": "Windows ARM64 Release",
+                "macos-arm64-release": {
+                    "short": "Mac ARM64 Release",
+                    "long": "MacOS ARM64 Release",
                     "buildType": "Release"
                 }
             }
         }
-    },
-    "cmake.configurePreset": "windows-arm64-debug"
+    }
 }

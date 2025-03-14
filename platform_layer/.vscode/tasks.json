@@ -67,7 +67,7 @@
                 "macos-arm64-debug"
             ],
             "group": "build",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         },
         {
             "label": "CMake: build (macos-arm64-debug)",
@@ -78,7 +78,10 @@
                 "--preset",
                 "macos-arm64-debug"
             ],
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "dependsOn": [
                 "CMake: configure (macos-arm64-debug)"
             ],
@@ -108,7 +111,7 @@
             "dependsOn": [
                 "CMake: configure (macos-arm64-release)"
             ],
-            "problemMatcher": ["$gcc"]
+            "problemMatcher": ["$clang"]
         }
     ]
 }

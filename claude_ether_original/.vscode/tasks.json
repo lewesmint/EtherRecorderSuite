@@ -11,7 +11,7 @@
         "macos-arm64-debug"
       ],
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": ["$gcc"]
     },
     {
       "label": "CMake: build (macos-arm64-release)",
@@ -23,7 +23,7 @@
         "macos-arm64-release"
       ],
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": ["$gcc"]
     },
     {
       "label": "CMake: build (win32-debug)",
@@ -35,7 +35,7 @@
         "win32-debug"
       ],
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": ["$gcc"]
     },
     {
       "label": "CMake: build (win32-release)",
@@ -47,7 +47,7 @@
         "win32-release"
       ],
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": ["$gcc"]
     },
     {
       "label": "CMake: build (x64-debug)",
@@ -59,7 +59,7 @@
         "x64-debug"
       ],
       "group": "build",
-      "problemMatcher": []
+      "problemMatcher": ["$gcc"]
     },
     {
       "label": "CMake: build (x64-release)",

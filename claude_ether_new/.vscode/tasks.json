@@ -33,25 +33,61 @@
     {
       "label": "Clean platform_layer (Debug)",
       "type": "shell",
-      "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\"",
+      "windows": {
+        "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\"",
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "command": "rm -rf \"${workspaceFolder}/../platform_layer/build/macos-arm64/Debug\"",
+        "problemMatcher": ["$gcc"]
+      },
       "problemMatcher": []
     },
     {
       "label": "Clean claude_ether_new (Debug)",
       "type": "shell",
-      "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Debug\"",
+      "windows": {
+        "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Debug\"",
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "command": "rm -rf \"${workspaceFolder}/build/macos-arm64/Debug\"",
+        "problemMatcher": ["$gcc"]
+      },
       "problemMatcher": []
     },
     {
       "label": "Clean platform_layer (Release)",
       "type": "shell",
-      "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\"",
+      "windows": {
+        "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\"",
+        "problemMatcher": ["$msCompile"]
+      },
+      "linux": {
+        "command": "rm -rf \"${workspaceFolder}/../platform_layer/build/linux-arm64/Release\"",
+        "problemMatcher": ["$gcc"]
+      },
+      "osx": {
+        "command": "rm -rf \"${workspaceFolder}/../platform_layer/build/macos-arm64/Release\"",
+        "problemMatcher": ["$gcc"]
+      },
       "problemMatcher": []
     },
     {
       "label": "Clean claude_ether_new (Release)",
       "type": "shell",
-      "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Release\"",
+      "windows": {
+        "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Release\"",
+        "problemMatcher": ["$msCompile"]
+      },
+      "linux": {
+        "command": "rm -rf \"${workspaceFolder}/build/linux-arm64/Release\"",
+        "problemMatcher": ["$gcc"]
+      },
+      "osx": {
+        "command": "rm -rf \"${workspaceFolder}/build/macos-arm64/Release\"",
+        "problemMatcher": ["$gcc"]
+      },
       "problemMatcher": []
     },
     {
@@ -60,12 +96,25 @@
       "command": "cmake",
       "args": [
         "--preset",
-        "windows-arm64-debug"
+        "macos-arm64-debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "args": [
+          "--preset",
+          "windows-arm64-debug"
+        ],
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "args": [
+          "--preset",
+          "macos-arm64-debug"
+        ],
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Configure platform_layer (Release)",
@@ -73,12 +122,17 @@
       "command": "cmake",
       "args": [
         "--preset",
-        "windows-arm64-release"
+        "${command:cmake.activeConfigurePresetName}"
       ],
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Configure claude_ether_new (Debug)",
@@ -86,9 +140,18 @@
       "command": "cmake",
       "args": [
         "--preset",
-        "windows-arm64-debug"
+        "macos-arm64-debug"
       ],
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "args": [
+          "--preset",
+          "windows-arm64-debug"
+        ],
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Configure claude_ether_new (Release)",
@@ -96,9 +159,14 @@
       "command": "cmake",
       "args": [
         "--preset",
-        "windows-arm64-release"
+        "${command:cmake.activeConfigurePresetName}"
       ],
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Build platform_layer (Debug)",
@@ -107,12 +175,22 @@
       "args": [
         "--build",
         "--preset",
-        "windows-arm64-debug"
+        "macos-arm64-debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "args": [
+          "--build",
+          "--preset",
+          "windows-arm64-debug"
+        ],
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Build platform_layer (Release)",
@@ -121,12 +199,17 @@
       "args": [
         "--build",
         "--preset",
-        "windows-arm64-release"
+        "${command:cmake.activeBuildPresetName}"
       ],
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Build claude_ether_new (Debug)",
@@ -135,9 +218,19 @@
       "args": [
         "--build",
         "--preset",
-        "windows-arm64-debug"
+        "macos-arm64-debug"
       ],
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "args": [
+          "--build",
+          "--preset",
+          "windows-arm64-debug"
+        ],
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     },
     {
       "label": "Build claude_ether_new (Release)",
@@ -146,9 +239,14 @@
       "args": [
         "--build",
         "--preset",
-        "windows-arm64-release"
+        "${command:cmake.activeBuildPresetName}"
       ],
-      "problemMatcher": ["$msCompile"]
+      "windows": {
+        "problemMatcher": ["$msCompile"]
+      },
+      "osx": {
+        "problemMatcher": ["$gcc"]
+      }
     }
   ]
 }

@@ -7,6 +7,13 @@
     "cmake.buildDirectory": "${workspaceFolder}/build/${variant:buildType}",
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
+
+    // MacOS Configuration
     "C_Cpp.default.compilerPath": "/usr/bin/clang",
-    "C_Cpp.default.intelliSenseMode": "macos-clang-arm"
+    "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+
+    /* Windows Configuration - Comment out MacOS section above and uncomment this section for Windows
+    "C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64",
+    */
 }
