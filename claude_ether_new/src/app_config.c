@@ -132,8 +132,8 @@ bool load_config(const char* filename, char* log_result) {
             char* end = strchr(line, ']');
             if (end) {
                 *end = '\0';
-                strncpy(current_section, line + 1, sizeof(current_section) - 1);
-                current_section[sizeof(current_section) - 1] = '\0';
+                current_section[0] = '\0';  // Ensure string is empty
+                platform_strcat(current_section, line + 1, sizeof(current_section));
             }
         }
         else {
@@ -146,12 +146,14 @@ bool load_config(const char* filename, char* log_result) {
                 trim_whitespace(value);
 
                 ConfigEntry* entry = (ConfigEntry*)malloc(sizeof(ConfigEntry));
-                strncpy(entry->section, current_section, sizeof(entry->section) - 1);
-                strncpy(entry->key, key, sizeof(entry->key) - 1);
-                strncpy(entry->value, value, sizeof(entry->value) - 1);
-                entry->section[sizeof(entry->section) - 1] = '\0';
-                entry->key[sizeof(entry->key) - 1] = '\0';
-                entry->value[sizeof(entry->value) - 1] = '\0';
+                entry->section[0] = '\0';  // Initialize strings to empty
+                entry->key[0] = '\0';
+                entry->value[0] = '\0';
+                
+                platform_strcat(entry->section, current_section, sizeof(entry->section));
+                platform_strcat(entry->key, key, sizeof(entry->key));
+                platform_strcat(entry->value, value, sizeof(entry->value));
+                
                 entry->next = config_entries;
                 config_entries = entry;
 

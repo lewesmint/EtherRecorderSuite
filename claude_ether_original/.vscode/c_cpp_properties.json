@@ -1,34 +1,26 @@
 {
     "configurations": [
         {
-            "name": "Mac",
-            "compilerPath": "/usr/bin/clang",
-            "intelliSenseMode": "macos-clang-arm64",
+            "name": "Win32-ARM64",
             "includePath": [
-                "${workspaceFolder}/inc",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/inc"
             ],
             "defines": [
-                "true=1",
-                "false=0",
-                "__STDC_VERSION__=201710L"
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32",
+                "_WIN32",
+                "_WIN32_WINNT=0x0600",
+                "NOMINMAX",
+                "WIN32_LEAN_AND_MEAN",
+                "_CRT_SECURE_NO_WARNINGS"
             ],
+            "windowsSdkVersion": "10.0.22621.0",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.37.32822/bin/Hostarm64/arm64/cl.exe",
             "cStandard": "c17",
-            "macFrameworkPath": [
-                "/System/Library/Frameworks",
-                "/Library/Frameworks"
-            ],
-            "browse": {
-                "path": [
-                    "${workspaceFolder}/inc",
-                    "${workspaceFolder}"
-                ],
-                "limitSymbolsToIncludedHeaders": false,
-                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
-            },
-            "cppStandard": "c++23",
-            "configurationProvider": "ms-vscode.cmake-tools",
-            "compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json"
+            "intelliSenseMode": "msvc-arm64",
+            "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],
     "version": 4

@@ -30,6 +30,17 @@ else()
     endif()
 endif()
 
+# Remove /MD from compiler options if it exists
+if(MSVC)
+    foreach(flag_var
+        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+        if(${flag_var} MATCHES "/MD")
+            string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+        endif()
+    endforeach()
+endif()
+
 # Define header directories
 set(PLATFORM_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
@@ -111,7 +122,6 @@ if(MSVC)
         /guard:cf # Control Flow Guard
         /sdl     # Additional security checks
         /MP      # Multi-processor compilation
-        /MD      # Multi-threaded DLL runtime
     )
 else()
     target_compile_options(platform_layer PRIVATE -Wall -Wextra -Wpedantic)
@@ -145,11 +155,12 @@ install(DIRECTORY inc/
     FILES_MATCHING PATTERN "*.h"
 )
 
-if(MSVC)
-    add_custom_command(
-        TARGET platform_layer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/compile_commands.json"
-        "${CMAKE_BINARY_DIR}/../compile_commands.json"
-    )
-endif()
+# if(MSVC)
+#     add_custom_command(
+#         TARGET platform_layer POST_BUILD
+#         COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#             "${CMAKE_BINARY_DIR}/compile_commands.json"
+#             "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json"
+#         COMMENT "Copying compile_commands.json to source directory"
+#     )
+# endif()

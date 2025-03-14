@@ -21,9 +21,4 @@ typedef struct {
     const char* message;       ///< Human-readable error message
 } ErrorTableEntry;
 
-/**
- * @brief Common success code across all domains
- */
-#define ERROR_SUCCESS 0
-
 #endif // ERROR_TYPES_H

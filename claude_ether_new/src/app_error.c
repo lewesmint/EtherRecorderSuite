@@ -1,5 +1,7 @@
 #include "app_error.h"
 
+#include <stdbool.h>
+
 #define DEFINE_ERROR_TABLES
 #include "thread_registry_errors.h"
 #include "thread_status_errors.h"

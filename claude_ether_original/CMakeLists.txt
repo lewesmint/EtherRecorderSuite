@@ -40,6 +40,11 @@ else()
     target_compile_options(ClaudeEther PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# Add include directories
+target_include_directories(ClaudeEther PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc
+)
+
 # Link Windows libraries if on Windows
 if(WIN32)
     target_link_libraries(ClaudeEther PRIVATE shlwapi bcrypt ws2_32)

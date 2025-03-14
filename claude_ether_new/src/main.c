@@ -34,8 +34,9 @@ static bool parse_args(int argc, char *argv[]) {
         if (strcmp(argv[i], "-c") == 0 && (i + 1) < argc) {
             char *config_file = argv[++i];  // Optional config file argument
             if (*config_file != '\0') {
-                strncpy(config_file_name, config_file, sizeof(config_file_name)-1);
-                config_file_name[sizeof(config_file_name)-1] = '\0';  // Ensure null termination
+                // Replace strncpy with platform_strcat
+                config_file_name[0] = '\0';  // Initialize to empty string
+                platform_strcat(config_file_name, config_file, sizeof(config_file_name));
                 return true;  // Successfully parsed config file argument
             }
         } else if (strcmp(argv[i], "-h") == 0) {
@@ -51,6 +52,9 @@ static bool parse_args(int argc, char *argv[]) {
 }
 
 static PlatformErrorCode init_app(void) {
+    // ensure we never try to log without the mutex in place by calling this here
+    init_logger_mutex();
+    
     PlatformErrorCode result;
     
     // Initialize console first for basic output
@@ -130,7 +134,12 @@ static PlatformErrorCode cleanup_app(void) {
 static bool send_demo_text_message(const char* msg_text) {
     Message_T message = {0};  // Zero-initialize the entire structure
     message.header.type = MSG_TYPE_TEST;
-    message.header.content_size = strlen(msg_text) + 1;  // Include null terminator
+    size_t content_len = platform_strlen(msg_text) + 1;  // Include null terminator
+    if (content_len > UINT32_MAX) {
+        logger_log(LOG_ERROR, "Message length exceeds maximum allowed size");
+        return false;
+    }
+    message.header.content_size = (uint32_t)content_len;
     
     if (message.header.content_size > sizeof(message.content)) {
         logger_log(LOG_ERROR, "Message too long for content buffer");

@@ -6,6 +6,8 @@
 #include "thread_registry.h"
 #include "thread_status_errors.h"
 
+extern const ThreadConfig ThreadConfigTemplate;
+
 static ThreadResult process_demo_message(ThreadConfig* thread, const Message_T* message) {
     (void)thread; // Unused parameter
 
@@ -32,7 +34,7 @@ static void* demo_heartbeat_function(void* arg) {
         // Process any pending messages
         ThreadResult result = service_thread_queue(thread_info);
         if (result != THREAD_SUCCESS) {
-            return (void*)result;
+            return (void*)(uintptr_t)(result);
         }
         
         // Do other periodic work
@@ -51,7 +53,7 @@ ThreadConfig* get_demo_heartbeat_thread(void) {
     // Initialize from template if not already done
     static bool initialized = false;
     if (!initialized) {
-        demo_heartbeat_thread = ThreadConfigemplate;  // Copy all default values
+        demo_heartbeat_thread = ThreadConfigTemplate;  // Copy all default values
         demo_heartbeat_thread.label = "DEMO_HEARTBEAT";
         demo_heartbeat_thread.func = demo_heartbeat_function;
         demo_heartbeat_thread.msg_processor = process_demo_message;

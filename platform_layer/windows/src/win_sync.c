@@ -92,8 +92,17 @@ PlatformErrorCode platform_event_wait(PlatformEvent_T event, uint32_t timeout_ms
     }
 }
 
-PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t timeout_ms) {
-    if (!handle) {
+PlatformWaitResult platform_wait_single(PlatformThreadId thread_id, uint32_t timeout_ms) {
+    if (!thread_id) {
+        return PLATFORM_WAIT_ERROR;
+    }
+
+    // Convert thread ID to handle
+    if (thread_id > (PlatformThreadId)MAXDWORD) {
+        return PLATFORM_WAIT_ERROR;
+    }
+    HANDLE handle = OpenThread(SYNCHRONIZE, FALSE, (DWORD)(uintptr_t)thread_id);
+    if (handle == NULL) {
         return PLATFORM_WAIT_ERROR;
     }
 
@@ -101,6 +110,9 @@ PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t ti
         handle,
         (timeout_ms == PLATFORM_WAIT_INFINITE) ? INFINITE : timeout_ms
     );
+
+    // Clean up the handle
+    CloseHandle(handle);
 
     switch (wait_result) {
         case WAIT_OBJECT_0:
@@ -112,12 +124,40 @@ PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t ti
     }
 }
 
-PlatformWaitResult platform_wait_multiple(PlatformThreadHandle* handles, 
-                                        uint32_t count, 
-                                        bool wait_all, 
-                                        uint32_t timeout_ms) {
-    if (!handles || count == 0 || count > MAXIMUM_WAIT_OBJECTS) {
+PlatformWaitResult platform_wait_multiple(PlatformThreadId* thread_list, 
+                                          uint32_t count, 
+                                          bool wait_all, 
+                                          uint32_t timeout_ms) {
+    if (!thread_list || count == 0 || count > MAXIMUM_WAIT_OBJECTS) {
         return PLATFORM_WAIT_ERROR;
+    }
+
+    // Allocate temporary array for handles
+    HANDLE* handles = (HANDLE*)malloc(count * sizeof(HANDLE));
+    if (!handles) {
+        return PLATFORM_WAIT_ERROR;
+    }
+
+    // Convert thread IDs to handles
+    for (uint32_t i = 0; i < count; i++) {
+        // Validate thread ID fits in DWORD
+        if (thread_list[i] > (PlatformThreadId)MAXDWORD) {
+            // Clean up already opened handles
+            for (uint32_t j = 0; j < i; j++) {
+                CloseHandle(handles[j]);
+            }
+            free(handles);
+            return PLATFORM_WAIT_ERROR;
+        }
+        handles[i] = OpenThread(SYNCHRONIZE, FALSE, (DWORD)(uintptr_t)thread_list[i]);
+        if (handles[i] == NULL) {
+            // Clean up already opened handles
+            for (uint32_t j = 0; j < i; j++) {
+                CloseHandle(handles[j]);
+            }
+            free(handles);
+            return PLATFORM_WAIT_ERROR;
+        }
     }
 
     DWORD wait_result = WaitForMultipleObjects(
@@ -126,6 +166,12 @@ PlatformWaitResult platform_wait_multiple(PlatformThreadHandle* handles,
         wait_all,
         (timeout_ms == PLATFORM_WAIT_INFINITE) ? INFINITE : timeout_ms
     );
+
+    // Clean up handles
+    for (uint32_t i = 0; i < count; i++) {
+        CloseHandle(handles[i]);
+    }
+    free(handles);
 
     if (wait_result >= WAIT_OBJECT_0 && 
         wait_result < WAIT_OBJECT_0 + count) {

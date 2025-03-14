@@ -142,6 +142,15 @@ size_t platform_write(FILE* stream, const void* buffer, size_t size);
 
 int platform_mkdir(const char* path);
 
+/**
+ * @brief Platform-agnostic file open function
+ * @param[out] file Pointer to FILE pointer that will receive the opened file handle
+ * @param[in] filename Name of the file to open
+ * @param[in] mode File open mode ("r", "w", "a", etc.)
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_fopen(FILE** file, const char* filename, const char* mode);
+
 #ifdef __cplusplus
 }
 #endif

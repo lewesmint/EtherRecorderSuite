@@ -78,14 +78,14 @@ void platform_thread_cleanup(void);
 
 /**
  * @brief Create a new thread
- * @param[out] handle Thread handle
+ * @param[out] thread_id Thread id
  * @param[in] attributes Thread attributes (NULL for defaults)
  * @param[in] function Thread function to execute
  * @param[in] arg Argument to pass to thread function
  * @return PlatformErrorCode indicating success or failure
  */
 PlatformErrorCode platform_thread_create(
-    PlatformThreadHandle* handle,
+    PlatformThreadId* thread_id,
     const PlatformThreadAttributes* attributes,
     PlatformThreadFunction function,
     void* arg);

@@ -6,7 +6,7 @@
                 "${workspaceFolder}/inc",
                 "${workspaceFolder}/posix/inc",
                 "${workspaceFolder}/macos/inc",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/windows/inc"
             ],
             "macFrameworkPath": [
                 "/System/Library/Frameworks",
@@ -14,13 +14,12 @@
             ],
             "browse": {
                 "path": [
-                    "${workspaceFolder}",
                     "${workspaceFolder}/inc",
                     "${workspaceFolder}/posix/inc",
                     "${workspaceFolder}/macos/inc",
-                    "${workspaceFolder}/**"
+                    "${workspaceFolder}/windows/inc"
                 ],
-                "limitSymbolsToIncludedHeaders": false,
+                "limitSymbolsToIncludedHeaders": true,
                 "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
             },
             "cStandard": "c17",
@@ -37,11 +36,10 @@
         {
             "name": "Win32-ARM64",
             "includePath": [
-                "${workspaceFolder}/**",
                 "${workspaceFolder}/inc",
-                "${workspaceFolder}/windows/inc",
                 "${workspaceFolder}/posix/inc",
-                "${workspaceFolder}/macos/inc"
+                "${workspaceFolder}/macos/inc",
+                "${workspaceFolder}/windows/inc"
             ],
             "defines": [
                 "_DEBUG",

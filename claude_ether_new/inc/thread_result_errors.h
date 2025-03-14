@@ -1,7 +1,7 @@
 #ifndef THREAD_RESULT_ERRORS_H
 #define THREAD_RESULT_ERRORS_H
 
-#include "error_types.h"
+#include "platform_error.h"
 
 typedef enum ThreadResult {
     THREAD_SUCCESS = 0,

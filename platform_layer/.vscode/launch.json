@@ -31,7 +31,7 @@
             "name": "Windows ARM64 (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/windows-arm64/Debug/Debug/platform_layer_test.exe",
+            "program": "${workspaceFolder}/build/windows-arm64/Debug/platform_layer_test.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

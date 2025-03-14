@@ -29,8 +29,7 @@ typedef enum ThreadState {
 } ThreadState;
 
 typedef struct ThreadRegistryEntry {
-    const ThreadConfig* thread;       // Thread configuration
-    PlatformThreadHandle handle;        // Thread handle
+    const ThreadConfig* thread;         // Thread configuration
     ThreadState state;                  // Current thread state
     bool auto_cleanup;                  // Auto cleanup flag
     MessageQueue_T* queue;              // Message queue for this thread
@@ -48,7 +47,7 @@ ThreadRegistryEntry* thread_registry_find_thread(
 
 // Core registry operations
 void thread_registry_cleanup(void);
-ThreadRegistryError thread_registry_register(const ThreadConfig* thread, PlatformThreadHandle handle, bool auto_cleanup);
+ThreadRegistryError thread_registry_register(const ThreadConfig* thread, bool auto_cleanup);
 ThreadRegistryError thread_registry_update_state(const char* thread_label, ThreadState new_state);
 ThreadState thread_registry_get_state(const char* thread_label);
 bool thread_registry_is_registered(const ThreadConfig* thread);

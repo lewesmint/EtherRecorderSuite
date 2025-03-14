@@ -39,12 +39,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../platform_layer 
                  ${CMAKE_CURRENT_BINARY_DIR}/platform_layer)
 
-# Include directories
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../platform_layer/inc  # Platform layer public headers
-)
-
 # Glob source files
 file(GLOB_RECURSE SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
@@ -53,7 +47,15 @@ file(GLOB_RECURSE SOURCES
 # Define the executable
 add_executable(ClaudeEther ${SOURCES})
 
-# Link against platform_layer and specify it as PUBLIC
+# Set include directories
+target_include_directories(ClaudeEther
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../platform_layer/inc
+)
+
+# Link against platform_layer
 target_link_libraries(ClaudeEther 
     PUBLIC platform_layer
 )

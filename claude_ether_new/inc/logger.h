@@ -59,6 +59,9 @@ typedef struct LogEntry_T {
     char thread_label[THREAD_LABEL_SIZE];
 } LogEntry_T;
 
+
+void init_logger_mutex(void);
+
 /**
  * @brief Initialises the logger.
  */

@@ -58,12 +58,12 @@ ThreadRegistryError app_thread_init(void) {
 
     // Create a thread structure for the main thread
     static ThreadConfig main_thread = {
-        .label = "MAIN"
+        .label = "MAIN",
     };
+    main_thread.thread_id = platform_thread_get_id();
 
     // Register the main thread with its current handle
-    PlatformThreadHandle main_handle = platform_thread_get_handle();
-    result = thread_registry_register(&main_thread, main_handle, false);
+    result = thread_registry_register(&main_thread, false);
     if (result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to register main thread: %s",
                   app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
@@ -145,8 +145,8 @@ static ThreadResult wait_for_logger(ThreadConfig* thread_info) {
     return THREAD_SUCCESS;
 }
 
-bool is_thread_suppressed(const char* suppressed_list, const char* thread_label) {
-    if (!suppressed_list || !thread_label || !*thread_label) {  // Check for empty string
+bool is_thread_suppressed(const char* suppressed_list, const char* label) {
+    if (!suppressed_list || !label || !*label) {  // Check for empty string
         return false;
     }
     
@@ -169,7 +169,7 @@ bool is_thread_suppressed(const char* suppressed_list, const char* thread_label)
         while (end > start && isspace(*end)) *end-- = '\0';
         
         // Check if the token matches the thread label
-        if (strcmp_nocase(start, thread_label) == 0) {
+        if (strcmp_nocase(start, label) == 0) {
             suppressed = true;
             break;
         }
@@ -178,7 +178,7 @@ bool is_thread_suppressed(const char* suppressed_list, const char* thread_label)
     }
     
     free(list_copy);
-    logger_log(LOG_DEBUG, "Thread '%s' is %s", thread_label, suppressed ? "suppressed" : "not suppressed");
+    logger_log(LOG_DEBUG, "Thread '%s' is %s", label, suppressed ? "suppressed" : "not suppressed");
     return suppressed;
 }
 
@@ -188,11 +188,11 @@ void app_thread_cleanup(void) {
 
 
 // Define the default template
-const ThreadConfig ThreadConfigemplate = {
+const ThreadConfig ThreadConfigTemplate = {
     .label = NULL,                         // Must be set by thread
     .func = NULL,                          // Must be set by thread
     .data = NULL,                          // Optional thread data
-    .thread_id = NULL,                     // Set by app_thread_create
+    .thread_id = 0,                        // Set by app_thread_create
     .pre_create_func = pre_create_stub,
     .post_create_func = post_create_stub,
     .init_func = init_stub,
@@ -211,7 +211,7 @@ const ThreadConfig ThreadConfigemplate = {
 ThreadConfig create_thread_config(const char* label, 
                                   ThreadFunc_T func, 
                                   const ThreadConfig* template) {
-    ThreadConfig new_config = template ? *template : ThreadConfigemplate;
+    ThreadConfig new_config = template ? *template : ThreadConfigTemplate;
     new_config.label = label;
     new_config.func = func;
     return new_config;
@@ -248,7 +248,7 @@ void start_threads(void) {
             continue;
         }
         
-        ThreadRegistryError result = app_thread_create(thread);
+        result = app_thread_create(thread);
         if (result != THREAD_REG_SUCCESS) {
             logger_log(LOG_ERROR, "Failed to create thread %s (error: %d)", 
                       thread->label, result);
@@ -256,11 +256,6 @@ void start_threads(void) {
                 return;
             }
         }
-        
-        // // Brief pause after logger starts to ensure it's ready
-        // if (strcmp(thread->label, "LOGGER") == 0) {
-        //     sleep_ms(100);
-        // }
     }
 }
 
@@ -292,7 +287,7 @@ static void* thread_wrapper(ThreadConfig* thread_args) {
     if (wait_result != THREAD_SUCCESS) {
         thread_registry_update_state(thread_args->label, 
                                    THREAD_STATE_FAILED);
-        return (void*)wait_result;
+        return (void*)(uintptr_t)(wait_result);
     }
     
     // Call init function if exists
@@ -328,7 +323,7 @@ static void* thread_wrapper(ThreadConfig* thread_args) {
     // Update thread state to terminated
     thread_registry_update_state(thread_args->label, THREAD_STATE_TERMINATED);
     
-    return (void*)(run_result);
+    return (void*)(uintptr_t)(run_result);
 }
 
 ThreadRegistryError app_thread_create(ThreadConfig* thread) {
@@ -360,7 +355,6 @@ ThreadRegistryError app_thread_create(ThreadConfig* thread) {
     }
     
     // Create the thread
-    PlatformThreadHandle thread_handle = NULL;
     PlatformThreadAttributes attributes = {0}; // Initialize default attributes
     
     if (platform_thread_create(&thread->thread_id, &attributes, 
@@ -369,15 +363,13 @@ ThreadRegistryError app_thread_create(ThreadConfig* thread) {
         return THREAD_REG_CREATION_FAILED;
     }
     
-    thread_handle = thread->thread_id;
-    
     // Call post-create function
     if (thread->post_create_func) {
         thread->post_create_func(thread);
     }
     
     // Register the thread
-    ThreadRegistryError reg_result = thread_registry_register(thread, thread_handle, true);
+    ThreadRegistryError reg_result = thread_registry_register(thread, true);
     if (reg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to register thread '%s': %s", 
                   thread->label, 

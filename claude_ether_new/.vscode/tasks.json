@@ -7,6 +7,8 @@
       "dependsOn": [
         "Clean platform_layer (Debug)",
         "Clean claude_ether_new (Debug)",
+        "Configure platform_layer (Debug)",
+        "Configure claude_ether_new (Debug)",
         "Build platform_layer (Debug)",
         "Build claude_ether_new (Debug)"
       ],
@@ -21,6 +23,8 @@
       "dependsOn": [
         "Clean platform_layer (Release)",
         "Clean claude_ether_new (Release)",
+        "Configure platform_layer (Release)",
+        "Configure claude_ether_new (Release)",
         "Build platform_layer (Release)",
         "Build claude_ether_new (Release)"
       ],
@@ -29,19 +33,96 @@
     {
       "label": "Clean platform_layer (Debug)",
       "type": "shell",
-      "command": "rm -rf ../platform_layer/build/windows-arm64/Debug/*",
+      "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Debug\"",
       "problemMatcher": []
     },
     {
       "label": "Clean claude_ether_new (Debug)",
       "type": "shell",
-      "command": "rm -rf build/windows-arm64/Debug/*",
+      "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Debug\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Debug\"",
       "problemMatcher": []
+    },
+    {
+      "label": "Clean platform_layer (Release)",
+      "type": "shell",
+      "command": "if exist \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\..\\platform_layer\\build\\windows-arm64\\Release\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "Clean claude_ether_new (Release)",
+      "type": "shell",
+      "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\\Release\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\\Release\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "Configure platform_layer (Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "windows-arm64-debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/../platform_layer"
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "Configure platform_layer (Release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "windows-arm64-release"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/../platform_layer"
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "Configure claude_ether_new (Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "windows-arm64-debug"
+      ],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "Configure claude_ether_new (Release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "windows-arm64-release"
+      ],
+      "problemMatcher": ["$msCompile"]
     },
     {
       "label": "Build platform_layer (Debug)",
       "type": "shell",
-      "command": "cmake --preset windows-arm64-debug && cmake --build --preset windows-arm64-debug",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "windows-arm64-debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/../platform_layer"
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "Build platform_layer (Release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "windows-arm64-release"
+      ],
       "options": {
         "cwd": "${workspaceFolder}/../platform_layer"
       },
@@ -50,34 +131,23 @@
     {
       "label": "Build claude_ether_new (Debug)",
       "type": "shell",
-      "command": "cmake --preset windows-arm64-debug && cmake --build --preset windows-arm64-debug",
-      "problemMatcher": ["$msCompile"]
-    },
-    {
-      "label": "Clean platform_layer (Release)",
-      "type": "shell",
-      "command": "rm -rf ../platform_layer/build/windows-arm64/Release/*",
-      "problemMatcher": []
-    },
-    {
-      "label": "Clean claude_ether_new (Release)",
-      "type": "shell",
-      "command": "rm -rf build/windows-arm64/Release/*",
-      "problemMatcher": []
-    },
-    {
-      "label": "Build platform_layer (Release)",
-      "type": "shell",
-      "command": "cmake --preset windows-arm64-release && cmake --build --preset windows-arm64-release",
-      "options": {
-        "cwd": "${workspaceFolder}/../platform_layer"
-      },
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "windows-arm64-debug"
+      ],
       "problemMatcher": ["$msCompile"]
     },
     {
       "label": "Build claude_ether_new (Release)",
       "type": "shell",
-      "command": "cmake --preset windows-arm64-release && cmake --build --preset windows-arm64-release",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "windows-arm64-release"
+      ],
       "problemMatcher": ["$msCompile"]
     }
   ]

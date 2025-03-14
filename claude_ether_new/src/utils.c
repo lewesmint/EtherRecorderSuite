@@ -2,6 +2,7 @@
 #include "platform_path.h"
 #include "platform_time.h"
 #include "platform_console.h"
+#include "platform_string.h"
 
 #include <string.h>
 #include <stdarg.h>
@@ -39,8 +40,9 @@ void strip_directory_path(const char* full_file_path, char* directory_path, size
     if (last_sep != NULL) {
         size_t len = (size_t)(last_sep - full_file_path);
         if (len >= size) len = size - 1;
-        strncpy(directory_path, full_file_path, len);
-        directory_path[len] = '\0';
+        directory_path[0] = '\0';  // Initialize to empty string
+        platform_strcat(directory_path, full_file_path, len + 1);  // +1 for null terminator
+        directory_path[len] = '\0';  // Ensure null termination at the correct position
     }
     else {
         directory_path[0] = '\0';

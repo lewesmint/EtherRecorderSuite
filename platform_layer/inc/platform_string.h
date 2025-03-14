@@ -117,6 +117,14 @@ size_t platform_str_split(char* str, char delim, char** parts, size_t max_parts)
  */
 size_t platform_strformat(char* dest, size_t size, const char* format, ...);
 
+/**
+ * @brief Get the length of a string
+ * @param[in] str String to measure
+ * @return Length of string in characters (excluding null terminator)
+ * @note Returns 0 if str is NULL
+ */
+size_t platform_strlen(const char* str);
+
 #ifdef __cplusplus
 }
 #endif

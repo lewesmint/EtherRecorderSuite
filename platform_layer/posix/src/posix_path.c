@@ -252,3 +252,16 @@ size_t platform_write(FILE* stream, const void* buffer, size_t size) {
 int platform_mkdir(const char* path) {
     return mkdir(path, 0755);
 }
+
+PlatformErrorCode platform_fopen(FILE** file, const char* filename, const char* mode) {
+    if (!file || !filename || !mode) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    *file = fopen(filename, mode);
+    if (*file == NULL) {
+        return PLATFORM_ERROR_FILE_OPEN;
+    }
+    
+    return PLATFORM_ERROR_SUCCESS;
+}

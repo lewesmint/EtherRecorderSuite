@@ -235,3 +235,15 @@ void platform_str_trim(char* str) {
         memmove(str, start, strlen(start) + 1);
     }
 }
+
+size_t platform_strlen(const char* str) {
+    if (!str) {
+        return 0;
+    }
+    
+    #if defined(_MSC_VER)
+        return strnlen(str, SIZE_MAX);
+    #else
+        return strlen(str);
+    #endif
+}

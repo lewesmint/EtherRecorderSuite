@@ -5,7 +5,6 @@
 #include "../../inc/platform_string.h"
 
 #include <string.h>
-#include <strings.h>
 #include <stdarg.h>
 #include <stdio.h>    // for vsnprintf
 #include <ctype.h>
@@ -157,4 +156,16 @@ bool platform_str_ends_with(const char* str, const char* suffix, bool case_sensi
     return case_sensitive ?
         strcmp(str + str_len - suffix_len, suffix) == 0 :
         strcasecmp(str + str_len - suffix_len, suffix) == 0;
+}
+
+size_t platform_strlen(const char* str) {
+    if (!str) {
+        return 0;
+    }
+    
+    #if defined(__GLIBC__) && defined(_GNU_SOURCE)
+        return strnlen(str, SIZE_MAX);
+    #else
+        return strlen(str);
+    #endif
 }

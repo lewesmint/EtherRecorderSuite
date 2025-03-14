@@ -35,12 +35,12 @@ static unsigned __stdcall thread_start_routine(void* arg) {
 }
 
 PlatformErrorCode platform_thread_create(
-    PlatformThreadHandle* handle,
+    PlatformThreadId* thread_id,
     const PlatformThreadAttributes* attributes,
     PlatformThreadFunction function,
-    void* arg)
+    void* arg)  
 {
-    if (!handle || !function) {
+    if (!thread_id || !function) {
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
@@ -58,15 +58,20 @@ PlatformErrorCode platform_thread_create(
         stack_size = attributes->stack_size;
     }
 
+
     // Create the thread
+    unsigned int temp_thread_id;
     uintptr_t thread_handle = _beginthreadex(
         NULL,           // Security attributes
         (unsigned)stack_size,  // Stack size
         thread_start_routine,  // Thread function
         context,       // Thread argument
         CREATE_SUSPENDED,  // Creation flags
-        NULL            // Thread ID
+        &temp_thread_id   // Thread ID
     );
+
+    // Store the thread ID in platform-agnostic format
+    *thread_id = (PlatformThreadId)temp_thread_id;
 
     if (thread_handle == 0) {
         free(context);
@@ -106,8 +111,6 @@ PlatformErrorCode platform_thread_create(
 
     // Start the thread
     ResumeThread((HANDLE)thread_handle);
-
-    *handle = (PlatformThreadHandle)thread_handle;
     return PLATFORM_ERROR_SUCCESS;
 }
 

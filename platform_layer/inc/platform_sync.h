@@ -106,22 +106,22 @@ bool platform_signal_unregister_handler(PlatformSignalType signal_type);
 /**
  * @brief Waits for a single object with timeout
  * 
- * @param handle Object handle to wait for
+ * @param thread_id Object id to wait for
  * @param timeout_ms Timeout in milliseconds (PLATFORM_WAIT_INFINITE for infinite)
  * @return PlatformWaitResult indicating success, timeout, or error
  */
-PlatformWaitResult platform_wait_single(PlatformThreadHandle handle, uint32_t timeout_ms);
+PlatformWaitResult platform_wait_single(PlatformThreadId thread_id, uint32_t timeout_ms);
 
 /**
  * @brief Waits for multiple objects with timeout
  * 
- * @param handles Array of object handles to wait for
- * @param count Number of handles in the array
+ * @param thread_list Array of object ids to wait for
+ * @param count Number of threads in the array
  * @param wait_all If true, wait for all objects; if false, wait for any object
  * @param timeout_ms Timeout in milliseconds (PLATFORM_WAIT_INFINITE for infinite)
  * @return PlatformWaitResult indicating success, timeout, or error
  */
-PlatformWaitResult platform_wait_multiple(PlatformThreadHandle *threads, uint32_t count, bool wait_all, uint32_t timeout_ms);
+PlatformWaitResult platform_wait_multiple(PlatformThreadId *thread_list, uint32_t count, bool wait_all, uint32_t timeout_ms);
  
 
 #ifdef __cplusplus

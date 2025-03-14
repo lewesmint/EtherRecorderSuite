@@ -47,6 +47,8 @@
 #define CONFIG_LOG_PATH_KEY "log_file_path"
 #define CONFIG_LOG_FILE_KEY "log_file_name"
 
+extern const ThreadConfig ThreadConfigTemplate;
+
 typedef struct ThreadLogFile {
     char thread_label[MAX_PATH_LEN];
     FILE *log_fp;
@@ -102,6 +104,10 @@ static PlatformThreadHandle log_thread; // Logging thread
 static bool logging_thread_started = false; // indicate whether the logger thread has started
 static bool g_purge_logs_on_restart = false;
  
+void init_logger_mutex(void) {
+    /* Initialise the mutex, vital this is down before any logging */
+    init_mutex(&logging_mutex);
+}
  
  /**
   * @brief Convert a timestamp granularity string to the corresponding enum.
@@ -275,8 +281,8 @@ static bool g_purge_logs_on_restart = false;
      if (strlen(path) > 0) {
          snprintf(full_log_file_name, size, "%s%c%s", path, PATH_SEPARATOR, name);
      } else {
-         strncpy(full_log_file_name, name, size - 1);
-         full_log_file_name[size - 1] = '\0';
+         full_log_file_name[0] = '\0';
+         platform_strcat(full_log_file_name, name, size);
      }
      sanitise_path(full_log_file_name);
  }
@@ -295,11 +301,18 @@ static bool g_purge_logs_on_restart = false;
          return;
      }
 
-     strncpy(thread_log_files[g_thread_log_file_count].thread_label, label, sizeof(thread_log_files[g_thread_log_file_count].thread_label) - 1);
-     strncpy(thread_log_files[g_thread_log_file_count].log_file_name, filename, sizeof(thread_log_files[g_thread_log_file_count].log_file_name) - 1);
+     // Initialize strings to empty first
+     thread_log_files[g_thread_log_file_count].thread_label[0] = '\0';
+     thread_log_files[g_thread_log_file_count].log_file_name[0] = '\0';
+     
+     // Copy strings safely using platform_strcat
+     platform_strcat(thread_log_files[g_thread_log_file_count].thread_label, label, 
+         sizeof(thread_log_files[g_thread_log_file_count].thread_label));
+     platform_strcat(thread_log_files[g_thread_log_file_count].log_file_name, filename,
+         sizeof(thread_log_files[g_thread_log_file_count].log_file_name));
      // Don't open yet, leave it to the first log message in the context of the logger.
      thread_log_files[g_thread_log_file_count].log_fp = NULL;   
-     thread_log_files[g_thread_log_file_count].first_open = false;  // Add initialization of first_open
+     thread_log_files[g_thread_log_file_count].first_open = false;
 
      // incremented each time we learn of a thread that needed logging
      g_thread_log_file_count++;
@@ -340,17 +353,6 @@ static bool g_purge_logs_on_restart = false;
  
  
  /**
-  * @brief Generates a timestamped log filename.
-  * @param buffer The buffer to store the filename.
-  * @param size The size of the buffer.
-  */
- static void generate_log_filename(char *buffer, size_t size) {
-     time_t now = time(NULL);
-     struct tm *t = localtime(&now);
-     strftime(buffer, size, "log_%Y-%m-%d.txt", t);
- }
- 
- /**
   * @brief Converts log level to string.
   * @param level The log level.
   * @return The string representation of the log level.
@@ -369,50 +371,58 @@ static bool g_purge_logs_on_restart = false;
  /**
   * @brief Opens the log file and manages the failure count.
   */
- static bool open_log_file_if_needed(ThreadLogFile *p_log_file) {
-     if (p_log_file->log_fp != NULL) {
-         // its open already
-         return true;
-     }
-
-     static int log_failure_count = 0; // Counter for log failures
-     static int directory_creation_failure_count = 0; // Counter for directory creation failures
-
-     char directory_path[MAX_PATH_LEN];
-
-     // Strip the directory path from the full file path
-     strip_directory_path(p_log_file->log_file_name, directory_path, sizeof(directory_path));
-     
-     // Create the directories for the log file if they don't exist
+ static bool create_log_directory(const char* directory_path, int* creation_failure_count) {
      if (create_directories(directory_path) != 0) {
-         if (directory_creation_failure_count < 5) {
-             // don't go on forever
+         if (*creation_failure_count < 5) {
              stream_print(stderr, "Failed to create directory structure for logging: %s\n", directory_path);
-             directory_creation_failure_count++;
-         }
-     }
-
-     char* mode = "a"; // Append mode by default
-     if (g_purge_logs_on_restart) {
-         mode = "w"; // Overwrite mode if purge_logs_on_restart is true
-     }
-     p_log_file->log_fp = fopen(p_log_file->log_file_name, mode);
-     if (p_log_file->log_fp == NULL) {
-         if (log_failure_count == 0) {
-             stream_print(stderr, "Failed to open log file: %s\n", p_log_file->log_file_name);
-         }
-         log_failure_count++;
-         if (log_failure_count >= MAX_LOG_FAILURES) {
-             stream_print(stderr, "Unrecoverable failure to open log file: %s\n. Exiting\n", p_log_file->log_file_name);
-             exit(EXIT_FAILURE);
+             (*creation_failure_count)++;
          }
          return false;
      }
+     return true;
+ }
 
-     // Reset failure counter on success
+ static bool handle_open_failure(const char* filename, int* failure_count) {
+     if (*failure_count == 0) {
+         stream_print(stderr, "Failed to open log file: %s\n", filename);
+     }
+     (*failure_count)++;
+     // Exit if logging is impossible over 100 iterations
+     if (*failure_count >= MAX_LOG_FAILURES) {
+         stream_print(stderr, "Unrecoverable failure to open log file: %s\n. Exiting\n", filename);
+         exit(EXIT_FAILURE);
+     }
+     return false;
+ }
+
+ static bool open_log_file_if_needed(ThreadLogFile *p_log_file) {
+     if (p_log_file->log_fp != NULL) {
+         return true;  // File already open
+     }
+
+     static int log_failure_count = 0;
+     static int directory_creation_failure_count = 0;
+
+     // Prepare directory
+     char directory_path[MAX_PATH_LEN];
+     // Strip the directory path from the full file path
+     strip_directory_path(p_log_file->log_file_name, directory_path, sizeof(directory_path));
+     create_log_directory(directory_path, &directory_creation_failure_count);
+
+     // Open file
+     char* mode = g_purge_logs_on_restart ? "w" : "a";
+     FILE* fp = NULL;
+     PlatformErrorCode err = platform_fopen(&fp, p_log_file->log_file_name, mode);
+     
+     if (err != PLATFORM_ERROR_SUCCESS || fp == NULL) {
+         p_log_file->log_fp = NULL;
+         return handle_open_failure(p_log_file->log_file_name, &log_failure_count);
+     }
+
+     // Success path
+     p_log_file->log_fp = fp;
      log_failure_count = 0;
 
-     // Print success message only on first successful open
      if (!p_log_file->first_open) {
          stream_print(stdout, "Successfully opened log file: %s\n", p_log_file->log_file_name);
          p_log_file->first_open = true;
@@ -422,22 +432,62 @@ static bool g_purge_logs_on_restart = false;
  }
  
  /**
+  * @brief Generates a timestamped log filename.
+  * @param buffer The buffer to store the filename.
+  * @param size The size of the buffer.
+  */
+ static void generate_log_filename(char *buffer, size_t size) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(buffer, size, "log_%Y-%m-%d.txt", t);
+}
+
+static void generate_rotated_log_filename(char* rotated_log_filename, size_t size) {
+   generate_log_filename(rotated_log_filename, size);
+   snprintf(rotated_log_filename + strlen(rotated_log_filename), 
+            size - strlen(rotated_log_filename), 
+            ".old");
+}
+
+ /**
   * @brief Rotates the log file if it exceeds the configured size.
   */
- static void rotate_log_file_if_needed(ThreadLogFile *p_log_file) {
+ static bool rotate_log_file_if_needed(ThreadLogFile *p_log_file) {
      // No lock here - caller must hold the lock
      struct stat st;
-     if (stat(p_log_file->log_file_name, &st) == 0 && st.st_size >= g_log_file_size) {
-         fclose(p_log_file->log_fp);
-         char rotated_log_filename[512];
-         generate_log_filename(rotated_log_filename, sizeof(rotated_log_filename));
-         snprintf(rotated_log_filename + strlen(rotated_log_filename), sizeof(rotated_log_filename) - strlen(rotated_log_filename), ".old");
-         rename(p_log_file->log_file_name, rotated_log_filename);
-         p_log_file->log_fp = fopen(p_log_file->log_file_name, "a");
-         if (p_log_file->log_fp == NULL) {
-             return;
-         }
+     if (stat(p_log_file->log_file_name, &st) != 0 || st.st_size < g_log_file_size) {
+         return true;  // No rotation needed
      }
+
+     // Close current file
+     if (p_log_file->log_fp != NULL) {
+         fclose(p_log_file->log_fp);
+         p_log_file->log_fp = NULL;
+     }
+
+     // Generate new filename and rotate
+     char rotated_log_filename[MAX_PATH_LEN];
+     generate_rotated_log_filename(rotated_log_filename, 
+                            sizeof(rotated_log_filename));
+
+     // Rename current file to rotated filename
+     if (rename(p_log_file->log_file_name, rotated_log_filename) != 0) {
+         stream_print(stderr, "Failed to rotate log file from %s to %s\n", 
+                     p_log_file->log_file_name, rotated_log_filename);
+         return false;
+     }
+
+     // Open new file
+     FILE* fp = NULL;
+     PlatformErrorCode err = platform_fopen(&fp, p_log_file->log_file_name, "a");
+     if (err != PLATFORM_ERROR_SUCCESS || fp == NULL) {
+         stream_print(stderr, "Failed to open new log file after rotation: %s\n", 
+                     p_log_file->log_file_name);
+         return false;
+     }
+
+     p_log_file->log_fp = fp;
+     return true;
  }
  
  /**
@@ -556,16 +606,19 @@ static bool g_purge_logs_on_restart = false;
  void create_log_entry(LogEntry_T* entry, LogLevel level, const char* message) {
      const char* this_thread_label = get_thread_label();
      const char* name = this_thread_label ? this_thread_label : "UNKNOWN";
- 
+
      entry->index = safe_increment_index();
      // Use platform-agnostic timestamp function
      platform_get_high_res_timestamp(&entry->timestamp);
      entry->level = level;
-     // Copy the thread label and message safely
-     strncpy(entry->thread_label, name, sizeof(entry->thread_label) - 1);
-     entry->thread_label[sizeof(entry->thread_label) - 1] = '\0'; // Ensure null termination
-     strncpy(entry->message, message, sizeof(entry->message) - 1);
-     entry->message[sizeof(entry->message) - 1] = '\0'; // Ensure null termination
+     
+     // Initialize strings to empty first
+     entry->thread_label[0] = '\0';
+     entry->message[0] = '\0';
+     
+     // Copy the thread label and message safely using platform_strcat
+     platform_strcat(entry->thread_label, name, sizeof(entry->thread_label));
+     platform_strcat(entry->message, message, sizeof(entry->message));
  }
  
  
@@ -604,8 +657,6 @@ static bool g_purge_logs_on_restart = false;
  bool init_logger_from_config(char* logger_init_result) {
      bool success = true; // Assume success unless an issue occurs
  
-     /* Initialise and lock the mutex */
-     init_mutex(&logging_mutex);
      lock_mutex(&logging_mutex);
  
      g_purge_logs_on_restart = get_config_bool("logger", "purge_logs_on_restart", g_purge_logs_on_restart);
@@ -763,7 +814,7 @@ static ThreadConfig logger_thread;
 ThreadConfig* get_logger_thread(void) {
     static bool initialized = false;
     if (!initialized) {
-        logger_thread = ThreadConfigemplate;
+        logger_thread = ThreadConfigTemplate;
         logger_thread.label = "LOGGER";
         logger_thread.func = logger_thread_function;
         logger_thread.suppressed = false;  // Logger cannot be suppressed

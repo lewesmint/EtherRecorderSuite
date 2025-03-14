@@ -13,7 +13,7 @@
             },
             "toolset": "host=ARM64",
             "architecture": "ARM64",
-            "binaryDir": "${sourceDir}/build/windows-arm64/Debug",
+            "binaryDir": "${sourceDir}/build/windows-arm64",
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_BUILD_TYPE": "Debug",
@@ -39,7 +39,7 @@
             },
             "toolset": "host=ARM64",
             "architecture": "ARM64",
-            "binaryDir": "${sourceDir}/build/windows-arm64/Release",
+            "binaryDir": "${sourceDir}/build/windows-arm64",
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_BUILD_TYPE": "Release",

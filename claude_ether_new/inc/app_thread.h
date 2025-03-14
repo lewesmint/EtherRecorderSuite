@@ -39,7 +39,7 @@ typedef ThreadResult (*MessageProcessor_T)(struct ThreadConfig* thread, const Me
 typedef struct ThreadConfig {
     const char* label;                   ///< Thread identifier (e.g., "CLIENT" or "SERVER")
     ThreadFunc_T func;                   ///< Main thread function
-    PlatformThreadHandle thread_id;      ///< Platform-agnostic thread identifier
+    PlatformThreadId thread_id;          ///< Platform-agnostic thread identifier
     void *data;                          ///< Thread-specific context data
     PreCreateFunc_T pre_create_func;     ///< Pre-creation hook
     PostCreateFunc_T post_create_func;   ///< Post-creation hook
