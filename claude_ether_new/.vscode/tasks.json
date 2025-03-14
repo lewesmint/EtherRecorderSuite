@@ -2,6 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Run Platform Switch Script",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "${workspaceFolder}/../scripts/switch_platform.py"
+      ],
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
       "label": "Clean and Build All (Debug)",
       "dependsOrder": "sequence",
       "dependsOn": [
