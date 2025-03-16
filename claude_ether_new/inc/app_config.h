@@ -39,7 +39,7 @@ const char* get_config_string(const char* section, const char* key, const char* 
  * @return The integer value associated with the key.
  */
 int get_config_int(const char* section, const char* key, int default_value);
-
+uint16_t get_config_uint16(const char* section, const char* key, uint16_t default_value);
 /**
  * @brief Retrieves a boolean value from the configuration.
  *
@@ -49,6 +49,8 @@ int get_config_int(const char* section, const char* key, int default_value);
  * @return The boolean value associated with the key.
  */
 bool get_config_bool(const char* section, const char* key, bool default_value);
+
+
 
 /**
  * @brief Frees all resources used by the configuration system.

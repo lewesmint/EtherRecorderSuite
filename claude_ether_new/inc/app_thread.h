@@ -62,13 +62,13 @@ extern const ThreadConfig ThreadConfigemplate;
  */
 typedef struct {
     ThreadConfig* thread;   ///< Thread to start
-    bool is_essential;     ///< If true, suppression generates warning
+    bool is_essential;      ///< If true, suppression generates warning
 } ThreadStartInfo;
 
 // Thread Management Functions
-ThreadRegistryError app_thread_init(void);
+ThreadRegistryError register_main_thread(void);
 void app_thread_cleanup(void);
-ThreadRegistryError app_thread_create(ThreadConfig* thread);
+ThreadResult app_thread_create(ThreadConfig* thread);
 void start_threads(void);
 
 // Thread Labeling

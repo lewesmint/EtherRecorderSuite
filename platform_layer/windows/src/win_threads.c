@@ -231,3 +231,30 @@ PlatformErrorCode platform_thread_get_priority(
 void platform_thread_yield(void) {
     SwitchToThread();
 }
+
+PlatformErrorCode platform_thread_get_status(PlatformThreadId thread_id, PlatformThreadStatus* status) {
+    if (!status) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    HANDLE thread_handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, (DWORD)thread_id);
+    if (thread_handle == NULL) {
+        *status = PLATFORM_THREAD_DEAD;
+        return PLATFORM_ERROR_SUCCESS;
+    }
+
+    DWORD exit_code;
+    if (GetExitCodeThread(thread_handle, &exit_code)) {
+        if (exit_code == STILL_ACTIVE) {
+            *status = PLATFORM_THREAD_ALIVE;
+        } else {
+            *status = PLATFORM_THREAD_TERMINATED;
+        }
+        CloseHandle(thread_handle);
+        return PLATFORM_ERROR_SUCCESS;
+    }
+
+    CloseHandle(thread_handle);
+    *status = PLATFORM_THREAD_UNKNOWN;
+    return PLATFORM_ERROR_UNKNOWN;
+}

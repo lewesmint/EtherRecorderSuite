@@ -63,7 +63,6 @@ typedef enum PlatformSocketError {
     PLATFORM_SOCKET_ERROR_GETSOCKOPT = -10
 } PlatformSocketError;
 
-
 /**
  * @brief Initialises the socket library.
  *

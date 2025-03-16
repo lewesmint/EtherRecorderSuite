@@ -32,94 +32,130 @@ platform_layer/
 
 ## Design Principles
 
-1. Public headers in `inc/` are platform-agnostic and form the stable API
-2. Platform-specific implementations are isolated in their respective directories
-3. POSIX code serves as the base for Unix-like systems
-4. macOS can use common POSIX code or provide optimized implementations
-5. Private headers in platform directories' `inc/` contain platform-specific internal definitions
+1. **Platform Agnosticism**
+   - Public headers in `inc/` form the stable API
+   - No platform-specific types or defines in public headers
+   - Consistent behavior across all supported platforms
 
-## Migration from claude_ether_original
+2. **Error Handling**
+   - Comprehensive error codes with domains
+   - Detailed error information
+   - Thread-safe error reporting
+   - No error state persistence
 
-The original `platform_utils.h` functionality has been split into specialized headers:
+3. **Resource Management**
+   - RAII-style resource handling where possible
+   - Explicit cleanup functions for all resources
+   - Resource tracking and leak detection in debug builds
 
-### New Headers
+4. **Thread Safety**
+   - All public APIs are thread-safe unless documented otherwise
+   - Thread-local storage for state management
+   - Atomic operations for shared state
+   - Proper mutex handling and deadlock prevention
 
-1. `platform_random.h`
-   - Cryptographically secure RNG
-   - Multiple output types (bytes, uint32, uint64, double)
-   - Proper initialization and cleanup
-   - Self-test capability
+## Implementation Guidelines
 
-2. `platform_string.h`
-   - Safe string operations with size limits
-   - Thread-safe tokenization
-   - Case-insensitive operations
-   - Modern string utilities (starts_with, ends_with)
-   - String transformation (upper/lower/trim)
+### Windows Implementation
+- Use modern Windows APIs (Windows 8+)
+- Prefer UTF-16 internally, UTF-8 externally
+- Use security-enhanced APIs
+- Implement proper HANDLE management
 
-3. `platform_path.h`
-   - Platform-agnostic path handling
-   - Path normalization and component extraction
-   - Directory operations
-   - Absolute/relative path conversion
+### POSIX Implementation
+- Target POSIX.1-2017 compliance
+- Use modern POSIX APIs
+- Proper file descriptor management
+- Signal-safe implementations where required
 
-4. `platform_console.h`
-   - Console control and formatting
-   - Color and text attributes
-   - Cursor control
-   - Input mode management
+### macOS Implementation
+- Build on POSIX implementation
+- Add platform-specific optimizations
+- Support Apple Silicon and Intel
+- Integrate with system frameworks when beneficial
 
-5. `platform_signal.h`
-   - Signal handling and registration
-   - Shutdown handler support
-   - Signal blocking controls
+## Build Configuration
 
-### Migration Guide
+### Required Tools
+- CMake 3.10 or higher
+- C17 compliant compiler
+- Ninja build system (recommended)
+- Python 3.x (for build scripts)
 
-1. Replace `platform_utils.h` includes with specific headers
-2. Update random number generation:
-   ```c
-   // Old
-   uint32_t rand = platform_random();
-   
-   // New
-   platform_random_init();
-   uint32_t rand;
-   platform_random_bytes(&rand, sizeof(rand));
-   ```
+### Build Types
+- Debug: Full debug info, assertions, leak checks
+- Release: Optimized, minimal debug info
+- RelWithDebInfo: Optimized with debug info
 
-3. Update string operations:
-   ```c
-   // Old
-   str_cmp_nocase(s1, s2);
-   platform_strtok(str, delim, &saveptr);
-   
-   // New
-   platform_strcasecmp(s1, s2);
-   platform_strtok(str, delim, &saveptr);
-   ```
+### Platform-Specific Features
 
-4. Update path handling:
-   ```c
-   // Old
-   resolve_full_path(filename, full_path, size);
-   
-   // New
-   platform_path_resolve(filename, full_path, size);
-   ```
+#### Windows
+- Control Flow Guard
+- ASLR Support
+- DEP Enforcement
+- Safe Exception Handling
 
-5. Update signal handling:
-   ```c
-   // Old
-   platform_register_shutdown_handler(callback);
-   
-   // New
-   platform_register_shutdown_handler(callback);
-   // Now in platform_signal.h
-   ```
+#### POSIX/macOS
+- Position Independent Code
+- Stack Protector
+- Fortify Source
+- Strict Aliasing Rules
 
-## Supported Platforms
+## Testing
 
-- Windows
-- POSIX-compliant systems
-- macOS (with platform-specific optimizations)
+### Test Categories
+1. Unit Tests
+   - Per-component testing
+   - Platform-specific edge cases
+   - Error condition verification
+
+2. Integration Tests
+   - Cross-component interaction
+   - Resource management
+   - Thread coordination
+
+3. Platform Tests
+   - Platform-specific behavior
+   - API compatibility
+   - Performance benchmarks
+
+### Running Tests
+```bash
+# Debug build and test
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+ctest --test-dir build
+
+# Release build with tests
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+## Documentation
+
+### API Documentation
+- Each header contains detailed documentation
+- Example usage in comments
+- Thread safety notes
+- Error handling requirements
+
+### Platform Notes
+- Platform-specific limitations documented
+- Performance characteristics
+- Feature availability matrix
+- Known issues and workarounds
+
+## Version Control
+
+### Branch Structure
+- main: Stable releases
+- develop: Integration branch
+- feature/*: Feature development
+- fix/*: Bug fixes
+
+### Commit Guidelines
+- Atomic commits
+- Clear commit messages
+- Reference issues
+- Include tests for changes

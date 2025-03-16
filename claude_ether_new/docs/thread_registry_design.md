@@ -1,396 +1,137 @@
-# Thread Registry Design
-
-## Overview
-The thread registry system provides thread-safe lifecycle management and status tracking for system threads. It ensures reliable thread creation, monitoring, and cleanup while preventing resource leaks and race conditions.
+# Thread Registry System Design
 
 ## Core Components
 
-### Public Interfaces
+1. **Thread Registry Structure**
+   ```c
+   typedef struct ThreadRegistry {
+       ThreadRegistryEntry* head;    // Head of registry entries
+       PlatformMutex_T mutex;       // Registry lock
+       uint32_t count;              // Number of registered threads
+   } ThreadRegistry;
+   ```
 
-#### ThreadRegistry
+2. **Thread Entry**
+   ```c
+   typedef struct ThreadRegistryEntry {
+       const ThreadConfig* thread;           // Thread configuration
+       ThreadState state;                    // Current thread state
+       bool auto_cleanup;                    // Auto cleanup flag
+       MessageQueue_T* queue;                // Message queue for this thread
+       struct ThreadRegistryEntry* next;     // Next entry in list
+       PlatformEvent_T completion_event;     // Event signaled on thread completion
+   } ThreadRegistryEntry;
+   ```
+
+## Core Operations
+
+1. **Registration**
+   - `thread_registry_register()`: Adds new thread to registry
+   - Validates thread config
+   - Creates completion event
+   - Adds to linked list
+   - Thread starts in CREATED state
+
+2. **State Management**
+   - `thread_registry_update_state()`: Updates thread state
+   - Valid states: CREATED → RUNNING → TERMINATED/FAILED
+   - State changes protected by mutex
+
+3. **Deregistration**
+   - `thread_registry_deregister()`: Removes thread from registry
+   - Cleans up resources if auto_cleanup set
+   - Updates linked list
+
+4. **Thread Monitoring**
+   - Watchdog uses registry to check thread status
+   - Detects mismatches between registry state and actual thread state
+   - Updates registry when dead threads found
+
+## Thread States
 ```c
-typedef struct ThreadRegistry {
-    ThreadRegistryEntry* head;     
-    RWLock registry_lock;          // Read-write lock for better concurrency
-    uint32_t count;               
-    EventNotifier* state_notifier; // For state change notifications
-    const char* owner_label;       // Added owner label
-} ThreadRegistry;
+typedef enum ThreadState {
+    THREAD_STATE_CREATED,    // Thread created but not running
+    THREAD_STATE_RUNNING,    // Thread is running
+    THREAD_STATE_SUSPENDED,  // Thread temporarily suspended
+    THREAD_STATE_STOPPING,   // Thread signaled to stop
+    THREAD_STATE_TERMINATED, // Thread has terminated
+    THREAD_STATE_FAILED,     // Thread encountered an error
+    THREAD_STATE_UNKNOWN     // Thread state is unknown
+} ThreadState;
 ```
 
-#### ThreadStatus
-```c
-typedef struct ThreadStatus {
-    const ThreadConfig* config;
-    PlatformThreadHandle handle;   
-    PlatformThreadHandle master_handle;  // Added: Reference to group master
-    atomic_int state;              // Atomic state for thread-safe updates
-    bool auto_cleanup;             
-    ThreadCleanupHandler cleanup;   // Cleanup strategy
-    const char* owner_label;       // Added owner label
-} ThreadStatus;
-```
-
-#### Error Codes
-```c
-typedef enum ThreadRegistryError {
-    THREAD_REG_SUCCESS = 0,
-    THREAD_REG_INVALID_ARGS,
-    THREAD_REG_DUPLICATE_THREAD,
-    THREAD_REG_CREATION_FAILED,
-    THREAD_REG_REGISTRATION_FAILED,
-    THREAD_REG_LOCK_ERROR,
-    THREAD_REG_CLEANUP_ERROR,
-    THREAD_REG_INVALID_STATE_TRANSITION
-} ThreadRegistryError;
-```
-
-### Internal Structures
-
-#### ThreadRegistryEntry
-```c
-typedef struct ThreadRegistryEntry {
-    ThreadStatus status;
-    RWLock entry_lock;            // Fine-grained locking
-    struct ThreadRegistryEntry* next;
-    uint64_t creation_timestamp;
-    uint32_t state_change_count;
-    ThreadStatistics stats;
-} ThreadRegistryEntry;
-```
-
-## Thread Lifecycle Management
-
-### State Machine
-```
-                    +------------+
-                    |  CREATED   |
-                    +------------+
-                          |
-                          v
-    +--------+     +------------+     +-----------+
-    | FAILED |<--->|  RUNNING   |---->| STOPPING  |
-    +--------+     +------------+     +-----------+
-                          |                 |
-                          v                 v
-                    +------------+    +------------+
-                    | SUSPENDED |    |TERMINATED  |
-                    +------------+    +------------+
-```
-
-### State Transitions
-- Valid transitions enforced through `thread_registry_validate_transition()`
-- State changes atomic and thread-safe
-- Notifications sent to registered observers
-
-### Thread Registration Flow
-```c
-ThreadRegistryError thread_registry_register(
-    ThreadRegistry* registry, 
-    const ThreadConfig* config,
-    PlatformThreadHandle handle,
-    bool auto_cleanup
-) {
-    // Input validation
-    if (!validate_registration_params(registry, config, handle)) {
-        return THREAD_REG_INVALID_ARGS;
-    }
-
-    // Acquire write lock
-    if (!registry_write_lock(registry)) {
-        return THREAD_REG_LOCK_ERROR;
-    }
-
-    // Check for duplicates
-    if (find_existing_thread(registry, config->label)) {
-        registry_write_unlock(registry);
-        return THREAD_REG_DUPLICATE_THREAD;
-    }
-
-    // Create and initialize entry
-    ThreadRegistryError err = create_registry_entry(registry, config, handle);
-    
-    registry_write_unlock(registry);
-    return err;
-}
-```
-
-### Thread State Reporting
-- Threads self-report state changes via `thread_registry_report_state()`
-- State changes validated against state machine
-- Observers notified of state changes
-- Statistics updated atomically
-
-## Synchronization Model
-
-### Lock Hierarchy
-1. Registry-level RWLock for structural changes
-2. Entry-level RWLock for status updates
-3. Atomic operations for state changes
-
-### Read Operations
-- Multiple readers allowed simultaneously
-- State queries use atomic reads
-- Statistics collection uses entry-level read locks
-
-### Write Operations
-- Registration/deregistration uses registry write lock
-- Status updates use entry write lock
-- State changes use atomic operations
-- Group membership changes through master handle updates
-
-## Error Handling and Recovery
-
-### Error Recovery Procedures
-1. Registration Failure:
-   - Clean up partial entry
-   - Release locks
-   - Notify failure
-   - Return error code
-
-2. State Change Failure:
-   - Maintain previous state
-   - Log error
-   - Notify observers
-   - Allow retry
-
-3. Cleanup Failure:
-   - Attempt partial cleanup
-   - Mark for manual intervention
-   - Log detailed error
-
-### Resource Management
-
-#### Memory Management
-- All allocations tracked
-- Cleanup handlers registered
-- Resource limits enforced
-- Memory leaks prevented through cleanup chain
-
-#### Handle Management
-- Platform handles wrapped
-- Reference counting for shared handles
-- Automatic handle cleanup
-- Handle validation on operations
-
-## Thread Cleanup
-
-### Auto Cleanup Mode
-1. Thread signals termination
-2. Registry detects state change
-3. Cleanup handler invoked
-4. Resources released
-5. Entry removed
-6. Observers notified
-
-### Manual Cleanup Mode
-1. Application initiates cleanup
-2. Registry validates state
-3. Resources released
-4. Entry removed
-4. Cleanup confirmed
-
-## Performance Considerations
-
-### Lock Optimization
-- Read-heavy operations optimized
-- Fine-grained locking used
-- Lock contention minimized
-- Lock-free operations where possible
-
-### Scalability
-- O(1) state changes
-- O(log n) thread lookup
-- O(n) cleanup operations
-- Configurable thread limits
-
-## Implementation Requirements
-
-### Thread Safety
-- All public APIs thread-safe
-- Internal operations properly synchronized
-- No deadlock scenarios
-- Race conditions prevented
-
-### Resource Limits
-- Maximum threads configurable
-- Memory usage bounded
-- Handle limits enforced
-- Queue sizes limited
-
-### Platform Requirements
-- Atomic operations support
-- Thread local storage
-- Read-write lock support
-- Event notification system
-
-## Validation
-
-### Input Validation
-- Thread labels: non-null, unique, max length
-- Handles: non-null, valid platform handle
-- States: valid enum values
-- Configuration: complete and valid
-
-### State Validation
-- Transitions follow state machine
-- No invalid state combinations
-- State history maintained
-- Statistics validated
-
-## Monitoring and Debugging
-
-### Statistics Collection
-- Thread creation time
-- State change counts
-- Error counts
-- Resource usage
-
-### Debugging Support
-- State change history
-- Error tracking
-- Resource monitoring
-- Performance metrics
-
-# Message Queue Design
-
-## Overview
-The message queue system provides a thread-safe mechanism for inter-thread communication. It supports multiple producers and consumers, ensuring reliable message delivery and preventing race conditions.
-
-## Core Components
-
-### Public Interfaces
-
-#### MessageQueue
-```c
-typedef struct MessageQueue {
-    Message_T* entries;
-    volatile int32_t head;
-    volatile int32_t tail;
-    int32_t max_size;
-    PlatformEvent_T not_empty_event;
-    PlatformEvent_T not_full_event;
-    const char* owner_label;         // Thread label that owns this queue
-} MessageQueue_T;
-```
-
-### Queue Management
-- Queue ownership tracked via owner_label
-- Queue initialized in owner thread's context
-- Debug logging for queue state changes
-- Error messages include queue owner information
-
-## Queue Operations
-
-### Enqueue Operation
-```c
-bool message_queue_enqueue(MessageQueue_T* queue, Message_T* message) {
-    // Implementation details
-}
-```
-
-### Dequeue Operation
-```c
-bool message_queue_dequeue(MessageQueue_T* queue, Message_T* message) {
-    // Implementation details
-}
-```
-
-## Synchronization Model
-
-### Lock Hierarchy
-1. Queue-level lock for structural changes
-2. Atomic operations for head and tail updates
-
-### Read Operations
-- Multiple readers allowed simultaneously
-- Message retrieval uses atomic reads
-- Queue state queries use atomic reads
-
-### Write Operations
-- Enqueue/dequeue operations use queue lock
-- Head and tail updates use atomic operations
-
-## Error Handling and Recovery
-
-### Error Recovery Procedures
-1. Enqueue Failure:
-   - Return false if queue is full
-   - Log error message with queue owner information
-
-2. Dequeue Failure:
-   - Return false if queue is empty
-   - Log error message with queue owner information
-
-### Resource Management
-
-#### Memory Management
-- All allocations tracked
-- Cleanup handlers registered
-- Resource limits enforced
-- Memory leaks prevented through cleanup chain
-
-#### Handle Management
-- Platform handles wrapped
-- Reference counting for shared handles
-- Automatic handle cleanup
-- Handle validation on operations
-
-## Performance Considerations
-
-### Lock Optimization
-- Read-heavy operations optimized
-- Fine-grained locking used
-- Lock contention minimized
-- Lock-free operations where possible
-
-### Scalability
-- O(1) enqueue and dequeue operations
-- O(1) space complexity
-- Configurable queue sizes
-
-## Implementation Requirements
-
-### Thread Safety
-- All public APIs thread-safe
-- Internal operations properly synchronized
-- No deadlock scenarios
-- Race conditions prevented
-
-### Resource Limits
-- Maximum queue size configurable
-- Memory usage bounded
-- Handle limits enforced
-- Queue sizes limited
-
-### Platform Requirements
-- Atomic operations support
-- Thread local storage
-- Read-write lock support
-- Event notification system
-
-## Validation
-
-### Input Validation
-- Queue size: positive integer
-- Messages: non-null, valid message format
-
-### State Validation
-- Queue state maintained
-- No invalid state combinations
-- State history maintained
-- Statistics validated
-
-## Monitoring and Debugging
-
-### Statistics Collection
-- Queue size
-- Enqueue and dequeue counts
-- Error counts
-- Resource usage
-
-### Debugging Support
-- Queue state change history
-- Error tracking
-- Resource monitoring
-- Performance metrics
+## Thread Synchronization
+
+1. **Wait Operations**
+   - `thread_registry_wait_for_thread()`: Wait for specific thread
+   - `thread_registry_wait_all()`: Wait for all threads
+   - `thread_registry_wait_others()`: Wait for other threads
+
+2. **Message Queue Operations**
+   - Each thread gets a message queue
+   - `push_message()`: Send message to thread
+   - `pop_message()`: Receive message from queue
+
+## Safety Features
+
+1. **Mutex Protection**
+   - All registry operations protected by mutex
+   - Prevents concurrent modification
+
+2. **Resource Cleanup**
+   - Auto cleanup of thread resources
+   - Completion events properly managed
+   - Message queues cleaned up on deregistration
+
+## Watchdog System
+
+1. **Watchdog Thread**
+   - Single dedicated thread for monitoring all registered threads
+   - Runs periodic checks every 1 second
+   - Uses thread registry to iterate through active threads
+   - No heartbeat mechanism required - relies on OS-level thread status
+
+2. **Core Responsibilities**
+   - Detects threads that have died unexpectedly
+   - Updates registry state when dead threads found (RUNNING → FAILED)
+   - Logs error conditions for system monitoring
+   - Does not attempt to restart threads (left to application logic)
+
+3. **Implementation**
+   ```c
+   while (!shutdown_signalled()) {
+       ThreadRegistryEntry* entry = thread_registry_find_thread(NULL);
+       
+       while (entry) {
+           if (entry->state == THREAD_STATE_RUNNING) {
+               // Check actual thread state via platform API
+               PlatformThreadStatus status;
+               if (platform_thread_get_status(entry->thread->thread_id, &status) 
+                   != PLATFORM_ERROR_SUCCESS) {
+                   logger_log(LOG_ERROR, "Thread '%s' status check failed", 
+                            entry->thread->label);
+               } 
+               else if (status == PLATFORM_THREAD_DEAD) {
+                   logger_log(LOG_ERROR, "Thread '%s' has died unexpectedly", 
+                            entry->thread->label);
+                   thread_registry_update_state(entry->thread->label, 
+                                             THREAD_STATE_FAILED);
+               }
+           }
+           entry = entry->next;
+       }
+       sleep_ms(1000);
+   }
+   ```
+
+4. **Watchdog Self-Monitoring**
+   - Main thread monitors watchdog health every 5 seconds via `check_watchdog()`
+   - If watchdog dies, main thread will:
+     - Deregister the dead watchdog
+     - Create and start a new watchdog thread
+     - Log the restart event
+
+5. **Dependencies**
+   - Requires platform API for thread status checking
+   - Uses thread registry for thread iteration
+   - Uses system logger for error reporting

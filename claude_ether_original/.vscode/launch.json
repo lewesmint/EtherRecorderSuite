@@ -3,17 +3,10 @@
     "configurations": [
         {
             "name": "Debug",
-            // PLATFORM_SWITCH_START
-            // MacOS Configuration
             "type": "cppdbg",
             "program": "${workspaceFolder}/build/macos-arm64/Debug/ClaudeEther",
             "MIMode": "lldb",
             "externalConsole": false,
-            // Windows Configuration
-            //"type": "cppvsdbg",
-            //"program": "${workspaceFolder}/build/windows-arm64/Debug/ClaudeEther.exe",
-            //"console": "externalTerminal",
-            // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],
             "stopAtEntry": false,
@@ -23,23 +16,29 @@
         },
         {
             "name": "Release",
-            // PLATFORM_SWITCH_START
-            // MacOS Configuration
             "type": "cppdbg",
             "program": "${workspaceFolder}/build/macos-arm64/Release/ClaudeEther",
             "MIMode": "lldb",
             "externalConsole": true,
-            // Windows Configuration
-            //"type": "cppvsdbg",
-            //"program": "${workspaceFolder}/build/windows-arm64/Release/ClaudeEther.exe",
-            //"console": "externalTerminal",
-            // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "preLaunchTask": "CMake: build (windows-arm64-release)"
+        },
+        {
+            "name": "C/C++: clang build and debug active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "C/C++: clang build active file"
         }
     ]
 }

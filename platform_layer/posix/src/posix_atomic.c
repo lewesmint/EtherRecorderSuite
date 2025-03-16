@@ -135,6 +135,31 @@ uint64_t platform_atomic_fetch_add_uint64(PlatformAtomicUInt64* atomic, uint64_t
     return atomic_fetch_add((_Atomic uint64_t*)&atomic->value, value);
 }
 
+// Store operations
+void platform_atomic_store_int32(PlatformAtomicInt32* atomic, int32_t value) {
+    atomic_store((_Atomic int32_t*)&atomic->value, value);
+}
+
+void platform_atomic_store_uint32(PlatformAtomicUInt32* atomic, uint32_t value) {
+    atomic_store((_Atomic uint32_t*)&atomic->value, value);
+}
+
+void platform_atomic_store_int64(PlatformAtomicInt64* atomic, int64_t value) {
+    atomic_store((_Atomic int64_t*)&atomic->value, value);
+}
+
+void platform_atomic_store_uint64(PlatformAtomicUInt64* atomic, uint64_t value) {
+    atomic_store((_Atomic uint64_t*)&atomic->value, value);
+}
+
+void platform_atomic_store_bool(PlatformAtomicBool* atomic, bool value) {
+    atomic_store((_Atomic bool*)&atomic->value, value);
+}
+
+void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value) {
+    atomic_store((_Atomic uintptr_t*)&atomic->value, (uintptr_t)value);
+}
+
 // Thread fence operation
 void platform_atomic_thread_fence(PlatformMemoryOrder order) {
     atomic_thread_fence(order);

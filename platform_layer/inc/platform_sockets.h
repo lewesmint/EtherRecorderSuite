@@ -37,20 +37,23 @@ typedef struct {
  * @brief Socket options
  */
 typedef struct {
-    bool blocking;           ///< Blocking mode
-    bool reuse_address;      ///< Allow address reuse
-    bool keep_alive;         ///< Enable keep-alive
-    uint32_t send_timeout_ms; ///< Send timeout in milliseconds
-    uint32_t recv_timeout_ms; ///< Receive timeout in milliseconds
-    uint32_t connect_timeout_ms; ///< Connect timeout in milliseconds
-    size_t send_buffer_size; ///< Send buffer size
-    size_t recv_buffer_size; ///< Receive buffer size
+    bool blocking;              // Blocking or non-blocking mode
+    uint32_t send_timeout_ms;   // Send timeout in milliseconds
+    uint32_t recv_timeout_ms;   // Receive timeout in milliseconds
+    uint32_t connect_timeout_ms; // Connect timeout in milliseconds
+    uint32_t send_buffer_size;  // Send buffer size
+    uint32_t recv_buffer_size;  // Receive buffer size
+    bool reuse_address;         // Enable SO_REUSEADDR
+    bool keep_alive;            // Enable SO_KEEPALIVE
+    bool no_delay;              // Disable Nagle's algorithm (TCP_NODELAY)
+    bool linger;                // Enable SO_LINGER
+    int linger_timeout;         // Linger timeout in seconds
 } PlatformSocketOptions;
 
 typedef struct PlatformSocket {
     int fd;                     // Socket file descriptor
-    bool is_tcp;               // TCP or UDP
-    PlatformSocketStats stats; // Socket statistics
+    bool is_tcp;                // TCP or UDP
+    PlatformSocketStats stats;  // Socket statistics
     PlatformSocketOptions opts; // Socket options
 } PlatformSocket;
 
@@ -203,6 +206,26 @@ PlatformErrorCode platform_socket_error_string(
     char* buffer,
     size_t buffer_size,
     const char* additional_info);
+
+/**
+ * @brief Wait for socket to become readable
+ * @param[in] handle Socket handle
+ * @param[in] timeout_ms Timeout in milliseconds (0 for default timeout)
+ * @return PlatformErrorCode indicating success, timeout, or failure
+ */
+PlatformErrorCode platform_socket_wait_readable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms);
+
+/**
+ * @brief Wait for socket to become writable
+ * @param[in] handle Socket handle
+ * @param[in] timeout_ms Timeout in milliseconds (0 for default timeout)
+ * @return PlatformErrorCode indicating success, timeout, or failure
+ */
+PlatformErrorCode platform_socket_wait_writable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

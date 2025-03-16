@@ -7,6 +7,7 @@
 
 // 3. Platform includes
 #include "platform_atomic.h"
+#include "platform_error.h"
 #include "platform_sockets.h"
 #include "platform_utils.h"
 #include "platform_threads.h"
@@ -50,7 +51,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
         SOCKET sock = setup_socket(is_server, is_tcp, addr, NULL, hostname, port);
         if (sock == INVALID_SOCKET) {
             char error_buffer[SOCKET_ERROR_BUFFER_SIZE];
-            get_socket_error_message(error_buffer, sizeof(error_buffer));
+            platform_get_error_message_from_code(platform_get_socket_error_code(), error_buffer, sizeof(error_buffer));
             logger_log(LOG_ERROR, "Socket setup failed: %s. Retrying in %d seconds...", error_buffer, backoff);
             
             sleep_seconds(backoff);
@@ -65,7 +66,7 @@ static SOCKET attempt_connection(bool is_server, bool is_tcp, struct sockaddr_in
             }
             else {
                 char error_buffer[SOCKET_ERROR_BUFFER_SIZE];
-                get_socket_error_message(error_buffer, sizeof(error_buffer));
+                platform_get_error_message_from_code(platform_get_socket_error_code(), error_buffer, sizeof(error_buffer));
                 logger_log(LOG_ERROR, "Connection failed: %s. Retrying in %d seconds...", error_buffer, backoff);
                 
                 if (sock != INVALID_SOCKET) {

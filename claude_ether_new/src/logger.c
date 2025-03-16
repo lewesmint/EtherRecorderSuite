@@ -319,37 +319,65 @@ void init_logger_mutex(void) {
 
      unlock_mutex(&logging_mutex); // Unlock the mutex
  }
- 
- /**
-  * @brief Sets the log file and log level for the current thread based on the config.
-  * @param thread_label The name of the thread.
-  */
- void set_thread_log_file_from_config(const char* thread_label) {
- 
-     char file_config_key[MAX_PATH_LEN];
-     snprintf(file_config_key, sizeof(file_config_key), "%s." CONFIG_LOG_FILE_KEY, thread_label);
-     const char* config_thread_log_file = get_config_string("logger", file_config_key, NULL);
-     const char* config_thread_log_path = get_config_string("logger", CONFIG_LOG_PATH_KEY, NULL);
 
-     /* Read log level from config */
-     const char* config_log_level = get_config_string("logger", "log_level", NULL);
-     g_log_level = log_level_from_string(config_log_level, g_log_level);
- #ifdef _DEBUG
-     g_trace_all = get_config_bool("debug", "trace_on", false);
- #endif
- 
-     /* Configure log file */
-     if (config_thread_log_file) {
-         if (config_thread_log_path) {
-             char full_log_file_name[MAX_PATH_LEN];
-             construct_log_file_name(full_log_file_name, sizeof(full_log_file_name), config_thread_log_path, config_thread_log_file);
-             set_log_thread_file(thread_label, full_log_file_name);
-         }
-         else {
-             set_log_thread_file(thread_label, config_thread_log_file);
-         }
-     }
- }
+static const char* find_parent_log_file(const char* thread_label) {
+    char parent_label[MAX_PATH_LEN];
+    char config_key[MAX_PATH_LEN];
+    const char* log_file = NULL;
+    
+    // Make a copy we can modify
+    strncpy(parent_label, thread_label, sizeof(parent_label) - 1);
+    parent_label[sizeof(parent_label) - 1] = '\0';
+    
+    // Keep checking parent levels until we find a config or run out of dots
+    while (strchr(parent_label, '.') != NULL && !log_file) {
+        // Remove the last segment
+        char* last_dot = strrchr(parent_label, '.');
+        *last_dot = '\0';
+        
+        // Check if this parent has a log file configured
+        snprintf(config_key, sizeof(config_key), "%s." CONFIG_LOG_FILE_KEY, parent_label);
+        log_file = get_config_string("logger", config_key, NULL);
+    }
+    
+    return log_file;
+}
+
+void set_thread_log_file_from_config(const char* thread_label) {
+    char file_config_key[MAX_PATH_LEN];
+    const char* config_thread_log_file = NULL;
+    const char* config_thread_log_path = get_config_string("logger", CONFIG_LOG_PATH_KEY, NULL);
+
+    /* Read log level from config */
+    const char* config_log_level = get_config_string("logger", "log_level", NULL);
+    g_log_level = log_level_from_string(config_log_level, g_log_level);
+
+#ifdef _DEBUG
+    g_trace_all = get_config_bool("debug", "trace_on", false);
+#endif
+
+    // First try the full thread label
+    snprintf(file_config_key, sizeof(file_config_key), "%s." CONFIG_LOG_FILE_KEY, thread_label);
+    config_thread_log_file = get_config_string("logger", file_config_key, NULL);
+
+    // If not found, try all parent levels
+    if (!config_thread_log_file && strchr(thread_label, '.')) {
+        config_thread_log_file = find_parent_log_file(thread_label);
+    }
+
+    /* Configure log file */
+    if (config_thread_log_file) {
+        if (config_thread_log_path) {
+            char full_log_file_name[MAX_PATH_LEN];
+            construct_log_file_name(full_log_file_name, sizeof(full_log_file_name), 
+                                  config_thread_log_path, config_thread_log_file);
+            set_log_thread_file(thread_label, full_log_file_name);
+        }
+        else {
+            set_log_thread_file(thread_label, config_thread_log_file);
+        }
+    }
+}
  
  
  /**
@@ -781,6 +809,7 @@ static void generate_rotated_log_filename(char* rotated_log_filename, size_t siz
  }
 
 static void* logger_thread_function(void* arg) {
+    // printf("Logger thread started\n");
     (void)arg;
     logger_log(LOG_INFO, "Logger thread started");
 
@@ -802,7 +831,10 @@ static void* logger_thread_function(void* arg) {
         }
     }
 
-    thread_registry_wait_others(); // Wait for all other threads to complete
+    PlatformWaitResult wait_result = thread_registry_wait_others();
+    if (wait_result != PLATFORM_WAIT_SUCCESS) {
+        logger_log(LOG_WARN, "Logger thread failed to wait for other threads: %d", wait_result);
+    }
     
     logger_log(LOG_INFO, "Logger thread shutting down.");
     stream_print(stdout, "Logger thread bye bye.\n");

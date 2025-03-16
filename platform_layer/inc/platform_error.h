@@ -59,6 +59,11 @@ typedef enum PlatformErrorCode {
     PLATFORM_ERROR_HOST_NOT_FOUND = 108,
     PLATFORM_ERROR_SOCKET_OPTION = 109,
     PLATFORM_ERROR_SOCKET_RESOLVE = 110,
+    PLATFORM_ERROR_SOCKET_SELECT = 111,
+    PLATFORM_ERROR_CONNECTION_REFUSED = 112,    // New: Server actively refused connection
+    PLATFORM_ERROR_NETWORK_DOWN = 113,          // New: Network interface is down
+    PLATFORM_ERROR_NETWORK_UNREACHABLE = 114,   // New: Network is unreachable
+    PLATFORM_ERROR_PEER_SHUTDOWN = 115,          // Remote peer has closed their end of the connection
 
     // Thread errors (200-299)
     PLATFORM_ERROR_THREAD_CREATE = 200,
@@ -123,10 +128,10 @@ int32_t platform_error_from_system(uint32_t system_error, PlatformErrorDomain do
  * @param[in] code Platform error code
  * @param[out] buffer Buffer to store the message
  * @param[in] buffer_size Size of the buffer
- * @return PlatformResult indicating success of the operation
+ * @return Pointer to the buffer containing the message
  */
-PlatformErrorCode platform_get_error_message(
-    int32_t code,
+char* platform_get_error_message_from_code(
+    PlatformErrorCode error_code,
     char* buffer,
     size_t buffer_size);
 

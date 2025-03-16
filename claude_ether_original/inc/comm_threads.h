@@ -7,25 +7,13 @@
 #include <stdint.h>
 
 #include "app_thread.h"
+#include "comm_context.h"
 
 // Configuration constants with sensible defaults
 #define COMMS_BUFFER_SIZE         8192
 #define SOCKET_ERROR_BUFFER_SIZE  256
 #define BLOCKING_TIMEOUT_SEC      10  // Blocking timeout in seconds
 
-typedef struct CommContext {
-    SOCKET* socket;                      ///< Socket handle
-    volatile long connection_closed;     ///< Connection status flag
-    uint32_t group_id;                   ///< Group identifier
-    struct sockaddr_in client_addr;      ///< Client address
-    bool is_relay_enabled;               ///< Relay mode enabled flag
-    bool is_tcp;                         ///< Protocol type (TCP/UDP)
-    void* foreign_queue;                 ///< Message queue
-    bool send_test_data;                ///< Send test data flag
-    int send_interval_ms;               ///< Send interval
-    int data_size;                      ///< Data size
-    // uint32_t thread_id;                  ///< Thread identifier
-} CommContext;
 
 typedef struct CommsThreadArgs_T{
     int port;                           ///< Port number

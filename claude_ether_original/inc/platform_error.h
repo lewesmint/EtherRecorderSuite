@@ -82,7 +82,6 @@ typedef enum PlatformErrorCode {
 PlatformErrorCode platform_get_error_code(PlatformErrorDomain domain);
 
 
-
 /**
  * @brief Gets a human-readable error message for a platform-agnostic error code
  * 

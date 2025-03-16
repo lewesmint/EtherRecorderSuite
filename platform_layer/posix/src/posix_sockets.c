@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 
+#include "platform_time.h"
 #include "platform_error.h"
 
 PlatformErrorCode platform_socket_init(void) {
@@ -50,8 +51,8 @@ static PlatformErrorCode set_socket_options(int fd, const PlatformSocketOptions*
     // Set send/receive timeouts
     if (options->send_timeout_ms > 0) {
         struct timeval tv = {
-            .tv_sec = options->send_timeout_ms / 1000,
-            .tv_usec = (options->send_timeout_ms % 1000) * 1000
+            .tv_sec = options->send_timeout_ms / PLATFORM_MS_PER_SEC,
+            .tv_usec = (options->send_timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
         };
         if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
             return PLATFORM_ERROR_SOCKET_OPTION;
@@ -60,8 +61,8 @@ static PlatformErrorCode set_socket_options(int fd, const PlatformSocketOptions*
 
     if (options->recv_timeout_ms > 0) {
         struct timeval tv = {
-            .tv_sec = options->recv_timeout_ms / 1000,
-            .tv_usec = (options->recv_timeout_ms % 1000) * 1000
+            .tv_sec = options->recv_timeout_ms / PLATFORM_MS_PER_SEC,
+            .tv_usec = (options->recv_timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
         };
         if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
             return PLATFORM_ERROR_SOCKET_OPTION;
@@ -138,6 +139,99 @@ PlatformErrorCode platform_socket_close(PlatformSocketHandle handle) {
     return PLATFORM_ERROR_SUCCESS;
 }
 
+static PlatformErrorCode map_connect_error(int error) {
+    switch (error) {
+        case ENETUNREACH:
+        case EHOSTUNREACH:
+            return PLATFORM_ERROR_HOST_NOT_FOUND;
+        case ECONNREFUSED:
+            return PLATFORM_ERROR_CONNECTION_REFUSED;
+        case ETIMEDOUT:
+            return PLATFORM_ERROR_TIMEOUT;
+        case ENETDOWN:
+            return PLATFORM_ERROR_NETWORK_DOWN;
+        default:
+            return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+}
+
+static struct addrinfo* resolve_address(const PlatformSocketAddress* address, bool is_tcp) {
+    struct addrinfo hints = {0};
+    hints.ai_family = address->is_ipv6 ? AF_INET6 : AF_INET;
+    hints.ai_socktype = is_tcp ? SOCK_STREAM : SOCK_DGRAM;
+    
+    struct addrinfo* result = NULL;
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%u", address->port);
+    
+    return (getaddrinfo(address->host, port_str, &hints, &result) == 0) ? result : NULL;
+}
+
+static PlatformErrorCode try_nonblocking_connect(
+    int fd, 
+    const struct addrinfo* addr)
+{
+    int connect_result = connect(fd, addr->ai_addr, addr->ai_addrlen);
+    if (connect_result < 0) {
+        if (errno == EINPROGRESS || errno == EWOULDBLOCK) {
+            return PLATFORM_ERROR_WOULD_BLOCK;
+        }
+        return map_connect_error(errno);
+    }
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+static PlatformErrorCode set_nonblocking_mode(int fd, int* original_flags) {
+    *original_flags = fcntl(fd, F_GETFL, 0);
+    if (*original_flags == -1) {
+        return PLATFORM_ERROR_SOCKET_OPTION;
+    }
+
+    if (fcntl(fd, F_SETFL, *original_flags | O_NONBLOCK) == -1) {
+        return PLATFORM_ERROR_SOCKET_OPTION;
+    }
+
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+static void restore_blocking_mode(int fd, int original_flags) {
+    fcntl(fd, F_SETFL, original_flags);
+}
+
+static PlatformErrorCode wait_for_connection(
+    int fd, 
+    int timeout_ms)
+{
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(fd, &write_fds);
+
+    struct timeval timeout = {
+        .tv_sec = timeout_ms / PLATFORM_MS_PER_SEC,
+        .tv_usec = (timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
+    };
+
+    int select_result = select(fd + 1, NULL, &write_fds, NULL, &timeout);
+
+    if (select_result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+    if (select_result < 0) {
+        return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+
+    if (FD_ISSET(fd, &write_fds)) {
+        int error;
+        socklen_t len = sizeof(error);
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+            return error == 0 ? PLATFORM_ERROR_SUCCESS : map_connect_error(error);
+        }
+    }
+
+    return PLATFORM_ERROR_SOCKET_CONNECT;
+}
+
+
 PlatformErrorCode platform_socket_connect(
     PlatformSocketHandle handle,
     const PlatformSocketAddress* address)
@@ -146,29 +240,47 @@ PlatformErrorCode platform_socket_connect(
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    struct addrinfo hints = {0};
-    hints.ai_family = address->is_ipv6 ? AF_INET6 : AF_INET;
-    hints.ai_socktype = handle->is_tcp ? SOCK_STREAM : SOCK_DGRAM;
-    
-    struct addrinfo* result = NULL;
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%u", address->port);
-    
-    int err = getaddrinfo(address->host, port_str, &hints, &result);
-    if (err != 0) {
+    struct addrinfo* addr_info = resolve_address(address, handle->is_tcp);
+    if (!addr_info) {
         return PLATFORM_ERROR_SOCKET_RESOLVE;
     }
 
-    // Try connecting to the first address
-    int connect_result = connect(handle->fd, result->ai_addr, result->ai_addrlen);
-    freeaddrinfo(result);
+    PlatformErrorCode result;
 
-    if (connect_result < 0) {
-        return (errno == EINPROGRESS && !handle->opts.blocking) ? 
-               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_CONNECT;
+    // Handle non-blocking sockets
+    if (!handle->opts.blocking) {
+        result = try_nonblocking_connect(handle->fd, addr_info);
+        freeaddrinfo(addr_info);
+        return result;
     }
 
-    return PLATFORM_ERROR_SUCCESS;
+    // Handle blocking sockets with timeout
+    int original_flags;
+    result = set_nonblocking_mode(handle->fd, &original_flags);
+    if (result != PLATFORM_ERROR_SUCCESS) {
+        freeaddrinfo(addr_info);
+        return result;
+    }
+
+    // Attempt initial connection
+    result = try_nonblocking_connect(handle->fd, addr_info);
+    freeaddrinfo(addr_info);
+
+    if (result == PLATFORM_ERROR_SUCCESS) {
+        restore_blocking_mode(handle->fd, original_flags);
+        return PLATFORM_ERROR_SUCCESS;
+    }
+
+    if (result != PLATFORM_ERROR_WOULD_BLOCK) {
+        restore_blocking_mode(handle->fd, original_flags);
+        return result;
+    }
+
+    // Wait for connection completion
+    result = wait_for_connection(handle->fd, handle->opts.connect_timeout_ms);
+    restore_blocking_mode(handle->fd, original_flags);
+    
+    return result;
 }
 
 PlatformErrorCode platform_socket_bind(
@@ -276,16 +388,17 @@ PlatformErrorCode platform_socket_send(
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    ssize_t result = send(handle->fd, buffer, length, 0);
-    if (result < 0) {
-        *bytes_sent = 0;
-        return (errno == EWOULDBLOCK && !handle->opts.blocking) ? 
-               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_SEND;
+    *bytes_sent = 0;
+    
+    ssize_t sent = send(handle->fd, buffer, length, 0);
+    if (sent < 0) {
+        if (errno == EWOULDBLOCK && !handle->opts.blocking) {
+            return PLATFORM_ERROR_WOULD_BLOCK;
+        }
+        return PLATFORM_ERROR_SOCKET_SEND;
     }
 
-    *bytes_sent = result;
-    handle->stats.bytes_sent += result;
-    handle->stats.packets_sent++;
+    *bytes_sent = (size_t)sent;
     return PLATFORM_ERROR_SUCCESS;
 }
 
@@ -299,21 +412,25 @@ PlatformErrorCode platform_socket_receive(
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    ssize_t result = recv(handle->fd, buffer, length, 0);
-    if (result < 0) {
-        *bytes_received = 0;
-        return (errno == EWOULDBLOCK && !handle->opts.blocking) ? 
-               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_RECEIVE;
+    *bytes_received = 0;
+
+    ssize_t received = recv(handle->fd, buffer, length, 0);
+    if (received < 0) {
+        if (errno == EWOULDBLOCK && !handle->opts.blocking) {
+            return PLATFORM_ERROR_WOULD_BLOCK;  // Timeout for non-blocking
+        }
+        return PLATFORM_ERROR_SOCKET_RECEIVE;   // Other errors
+    }
+    
+    // A return value of 0 from recv() indicates that the peer has performed
+    // an orderly shutdown (FIN packet received). This is different from
+    // a timeout or error condition - it means the remote end has explicitly
+    // closed their side of the connection.
+    if (received == 0) {
+        return PLATFORM_ERROR_PEER_SHUTDOWN;  // More specific than CONNECTION_CLOSED
     }
 
-    if (result == 0) {
-        *bytes_received = 0;
-        return PLATFORM_ERROR_SOCKET_CLOSED;  // Changed from CONNECTION_CLOSED
-    }
-
-    *bytes_received = result;
-    handle->stats.bytes_received += result;
-    handle->stats.packets_received++;
+    *bytes_received = (size_t)received;
     return PLATFORM_ERROR_SUCCESS;
 }
 
@@ -412,8 +529,108 @@ const char* platform_socket_error_to_string(PlatformErrorCode error) {
         case PLATFORM_ERROR_SOCKET_RECEIVE:
             return "Failed to receive data";
         case PLATFORM_ERROR_SOCKET_CLOSED:
-            return "Socket closed";
+            return "Local socket is closed or invalid";
+        case PLATFORM_ERROR_SOCKET_SELECT:
+            return "Socket select operation failed";
+        case PLATFORM_ERROR_PEER_SHUTDOWN:
+            return "Remote peer performed orderly shutdown";
         default:
             return "Unknown error";
     }
+}
+
+PlatformErrorCode platform_socket_wait_readable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms)
+{
+    if (!handle) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Validate file descriptor
+    if (handle->fd < 0) {
+        return PLATFORM_ERROR_SOCKET_CLOSED;
+    }
+
+    // Check if fd is within the maximum allowed range
+    // __DARWIN_FD_SETSIZE is typically 1024 on macOS
+    if (handle->fd >= __DARWIN_FD_SETSIZE) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Initialize fd_set structure
+    fd_set read_fds;
+    FD_ZERO(&read_fds);  // Clear all bits first
+    
+    // Safely set the bit for our file descriptor
+    if (fcntl(handle->fd, F_GETFD) == -1) {
+        // Socket is invalid or closed
+        return PLATFORM_ERROR_SOCKET_CLOSED;
+    }
+    
+    FD_SET(handle->fd, &read_fds);
+
+    struct timeval tv = {
+        .tv_sec = timeout_ms / 1000,
+        .tv_usec = (timeout_ms % 1000) * 1000
+    };
+
+    int result = select(handle->fd + 1, &read_fds, NULL, NULL, &tv);
+    
+    if (result < 0) {
+        if (errno == EBADF) {
+            return PLATFORM_ERROR_SOCKET_CLOSED;
+        }
+        return PLATFORM_ERROR_SOCKET_SELECT;
+    }
+    
+    if (result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+
+    // Double check the fd is still valid and set
+    if (!FD_ISSET(handle->fd, &read_fds)) {
+        return PLATFORM_ERROR_SOCKET_CLOSED;
+    }
+
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_socket_wait_writable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms)
+{
+    if (!handle) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Use default timeout if none specified (0)
+    if (timeout_ms == 0) {
+        timeout_ms = PLATFORM_DEFAULT_WAIT_TIMEOUT_MS;
+    }
+    // Clamp timeout to valid range
+    else if (timeout_ms > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MAX_WAIT_TIMEOUT_MS;
+    } else if (timeout_ms < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MIN_WAIT_TIMEOUT_MS;
+    }
+
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(handle->fd, &write_fds);
+
+    struct timeval tv = {
+        .tv_sec = timeout_ms / PLATFORM_MS_PER_SEC,
+        .tv_usec = (timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
+    };
+
+    int result = select(handle->fd + 1, NULL, &write_fds, NULL, &tv);
+    if (result < 0) {
+        return PLATFORM_ERROR_SOCKET_SELECT;
+    }
+    if (result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+    
+    return PLATFORM_ERROR_SUCCESS;
 }

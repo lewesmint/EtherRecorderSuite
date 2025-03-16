@@ -3,7 +3,6 @@
         {
             "name": "Default",
             "includePath": [
-                "${workspaceFolder}/inc",
                 "${workspaceFolder}/../platform_layer/inc",
                 // PLATFORM_SWITCH_START
                 // MacOS Configuration
@@ -12,6 +11,7 @@
                 // Windows Configuration
                 //"${workspaceFolder}/../platform_layer/windows/inc"
                 // PLATFORM_SWITCH_END
+                "${workspaceFolder}/inc"
             ],
             // PLATFORM_SWITCH_START
             // MacOS Configuration

@@ -188,3 +188,32 @@ void platform_thread_yield(void)
 {
     sched_yield();
 }
+
+PlatformErrorCode platform_thread_get_status(PlatformThreadId thread_id, PlatformThreadStatus* status) {
+    if (!status) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    pthread_t thread = (pthread_t)thread_id;
+    int result = pthread_kill(thread, 0);
+    
+    if (result == 0) {
+        *status = PLATFORM_THREAD_ALIVE;
+        return PLATFORM_ERROR_SUCCESS;
+    }
+    
+    if (errno == ESRCH) {
+        // Thread does not exist
+        *status = PLATFORM_THREAD_DEAD;
+        return PLATFORM_ERROR_SUCCESS;
+    }
+    
+    if (errno == EINVAL) {
+        // Invalid signal (shouldn't happen with signal 0)
+        *status = PLATFORM_THREAD_UNKNOWN;
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    *status = PLATFORM_THREAD_UNKNOWN;
+    return PLATFORM_ERROR_UNKNOWN;
+}

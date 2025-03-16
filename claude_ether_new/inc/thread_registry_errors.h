@@ -20,7 +20,8 @@ typedef enum ThreadRegistryError {
     THREAD_REG_CLEANUP_ERROR,
     THREAD_REG_UNAUTHORIZED,    
     THREAD_REG_ALLOCATION_FAILED,
-    THREAD_REG_QUEUE_ERROR
+    THREAD_REG_QUEUE_ERROR,
+    THREAD_REG_STATUS_CHECK_FAILED  // Renamed from THREAD_REG_PLATFORM_ERROR
 } ThreadRegistryError;
 
 #ifdef DEFINE_ERROR_TABLES
@@ -41,7 +42,8 @@ const ErrorTableEntry thread_registry_errors[] = {
     {THREAD_REG_CLEANUP_ERROR,            "Thread cleanup failed"},
     {THREAD_REG_UNAUTHORIZED,             "Unauthorized queue access"},
     {THREAD_REG_ALLOCATION_FAILED,        "Memory allocation failed"},
-    {THREAD_REG_QUEUE_ERROR,              "Message queue operation failed"}
+    {THREAD_REG_QUEUE_ERROR,              "Message queue operation failed"},
+    {THREAD_REG_STATUS_CHECK_FAILED,      "Failed to check thread status"}
 };
 #endif
 

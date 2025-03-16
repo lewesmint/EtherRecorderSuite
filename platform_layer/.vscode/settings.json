@@ -17,7 +17,6 @@
     // MacOS Configuration
     "C_Cpp.default.compilerPath": "/usr/bin/clang",
     "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
-
     // Windows Configuration
     //"C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
     //"C_Cpp.default.intelliSenseMode": "windows-msvc-arm64"

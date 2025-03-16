@@ -358,33 +358,38 @@ void* receive_thread_function(void* arg) {
  * @brief Initialize relay between two endpoints (X and Y)
  * 
  * Sets up queues for bidirectional message relay:
- * X -> [Server Recv] -> Queue A -> [Client Send] -> Y
- * Y -> [Client Recv] -> Queue B -> [Server Send] -> X
+ * X -> [Server Recv] -> Client Send Queue -> [Client Send] -> Y
+ * Y -> [Client Recv] -> Server Send Queue -> [Server Send] -> X
  * 
- * @param server_args Server connection args (connected to X)
- * @param client_args Client connection args (connected to Y)
- * @return bool true if relay setup successful
+ * @param server_context Server connection context
+ * @param client_context Client connection context
+ * @return true if relay setup successful
  */
-// bool init_relay(CommArgs_T* server_args, CommArgs_T* client_args) {
-    // if (!server_args || !client_args) {
-    //     logger_log(LOG_ERROR, "Invalid arguments for relay initialization");
-    //     return false;
-    // }
+bool init_relay(CommContext* server_context, CommContext* client_context) {
+    if (!server_context || !client_context) {
+        logger_log(LOG_ERROR, "Invalid contexts for relay setup");
+        return false;
+    }
 
-    // // Get the thread queues from the message queue system
-    // ThreadQueue_T* server_send_queue = message_queue_find_by_thread(server_args->thread_id);
-    // ThreadQueue_T* client_send_queue = message_queue_find_by_thread(client_args->thread_id);
-    
-    // if (!server_send_queue || !client_send_queue) {
-    //     logger_log(LOG_ERROR, "Failed to get thread queues for relay");
-    //     return false;
-    // }
+    // Get the existing thread queues
+    MessageQueue_T* client_send_queue = message_queue_create_for_thread(client_context->send_thread);
+    MessageQueue_T* server_send_queue = message_queue_create_for_thread(server_context->send_thread);
 
-    // server_args->queue = &server_send_queue->queue;
-    // client_args->queue = &client_send_queue->queue;
+    if (!client_send_queue || !server_send_queue) {
+        logger_log(LOG_ERROR, "Failed to get thread queues");
+        return false;
+    }
 
-    // return true;
-// }
+    // Connect the queues
+    server_context->foreign_queue = client_send_queue;  // Server recv -> Client send
+    client_context->foreign_queue = server_send_queue;  // Client recv -> Server send
+
+    server_context->is_relay_enabled = true;
+    client_context->is_relay_enabled = true;
+
+    logger_log(LOG_INFO, "Relay initialized between server and client");
+    return true;
+}
 
 // /**
 //  * @brief Create send and receive threads for a connection
@@ -528,6 +533,7 @@ CommContext* comm_context_create(uint32_t group_id, SOCKET* socket, bool is_tcp)
     context->group_id = group_id;
     context->is_tcp = is_tcp;
     context->is_relay_enabled = false;
+    context->foreign_queue = NULL;  // Will be set during relay setup
     memset(&context->client_addr, 0, sizeof(context->client_addr));
     
     return context;

@@ -14,19 +14,19 @@
 #include "platform_string.h"
 #include "platform_error.h"
 #include "platform_sync.h"
+#include "platform_atomic.h"
 
 // Project includes
 #include "app_config.h"
 #include "thread_registry.h"
 #include "app_error.h"
 
-// #include "client_manager.h"
-// #include "command_interface.h"
+#include "client_manager.h"
+#include "command_interface.h"
 #include "log_queue.h"
 #include "logger.h"
-// #include "server_manager.h"
+#include "server_manager.h"
 #include "thread_registry.h"
-// #include "comm_threads.h"
 #include "utils.h"
 
 typedef enum WaitResult {
@@ -34,9 +34,6 @@ typedef enum WaitResult {
     APP_WAIT_TIMEOUT = PLATFORM_WAIT_TIMEOUT,    // 1
     APP_WAIT_ERROR = PLATFORM_WAIT_ERROR         // -1
 } WaitResult;
-
-// extern PlatformCondition_T logger_thread_condition;
-// extern PlatformMutex_T logger_thread_mutex;
 
 static THREAD_LOCAL const char* thread_label = NULL;
 
@@ -48,14 +45,7 @@ const char* get_thread_label(void) {
     return thread_label;
 }
 
-ThreadRegistryError app_thread_init(void) {
-    ThreadRegistryError result = init_global_thread_registry();
-    if (result != THREAD_REG_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to initialize thread registry: %s",
-                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
-        return result;
-    }
-
+ThreadRegistryError register_main_thread(void) {
     // Create a thread structure for the main thread
     static ThreadConfig main_thread = {
         .label = "MAIN",
@@ -63,22 +53,22 @@ ThreadRegistryError app_thread_init(void) {
     main_thread.thread_id = platform_thread_get_id();
 
     // Register the main thread with its current handle
-    result = thread_registry_register(&main_thread, false);
-    if (result != THREAD_REG_SUCCESS) {
+    ThreadRegistryError reg_result = thread_registry_register(&main_thread, false);
+    if (reg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to register main thread: %s",
-                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
-        return result;
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
+        return reg_result;
     }
 
     // Initialize message queue for main thread
-    result = init_queue(main_thread.label);
-    if (result != THREAD_REG_SUCCESS) {
+    reg_result = init_queue(main_thread.label);
+    if (reg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to initialize main thread message queue: %s",
-                  app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
-        return result;
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
+        return reg_result;
     }
     
-    return THREAD_REG_SUCCESS;
+    return reg_result;
 }
 
 void* pre_create_stub(void* arg) {
@@ -217,22 +207,119 @@ ThreadConfig create_thread_config(const char* label,
     return new_config;
 }
 
-void start_threads(void) {
-    // Initialize thread registry
-    ThreadRegistryError result = app_thread_init();
-    if (result != THREAD_REG_SUCCESS) {
-        stream_print(stderr, "Failed to initialize thread registry: %s\n",
-                    app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
-        return;
+static PlatformAtomicUInt64 g_watchdog_impulse = {0};
+
+static void watchdog_heartbeat(void) {
+    platform_atomic_store_uint64(&g_watchdog_impulse, get_time_ms());
+}
+
+static void* watchdog_thread_func(void* arg) {
+    ThreadConfig* config = (ThreadConfig*)arg;
+    
+    // Register with normal thread initialization
+    thread_registry_update_state(config->label, THREAD_STATE_RUNNING);
+    
+    while (!shutdown_signalled()) {
+        // Update watchdog heartbeat
+        watchdog_heartbeat();
+        
+        ThreadRegistryError result = thread_registry_check_all_threads();
+        if (result != THREAD_REG_SUCCESS) {
+            logger_log(LOG_ERROR, "Failed to check thread health: %s",
+                      app_error_get_message(THREAD_REGISTRY_DOMAIN, result));
+        }
+        
+        sleep_ms(1000);
     }
     
+    return NULL;
+}
+
+// Function to check if watchdog is alive (called from main thread)
+bool is_watchdog_alive(void) {
+    uint64_t last_heartbeat = platform_atomic_load_uint64(&g_watchdog_impulse);
+    uint64_t current_time = get_time_ms();
+    
+    // If watchdog hasn't updated heartbeat in 10 seconds, consider it dead
+    if (current_time - last_heartbeat > 10000) {
+        logger_log(LOG_ERROR, "Watchdog thread appears to be hung");
+        return false;
+    }
+    return true;
+}
+
+static ThreadConfig* get_watchdog_thread(void) {
+    static ThreadConfig config = {
+        .label = "WATCHDOG",
+        .func = watchdog_thread_func
+    };
+    return &config;
+}
+
+void check_watchdog(void) {
+    static uint64_t last_check = 0;
+    uint64_t current_time = get_time_ms();
+    
+    // Check every 5 seconds
+    if (current_time - last_check < 5000) {
+        return;
+    }
+    last_check = current_time;
+
+    // First check if watchdog thread exists and is registered
+    ThreadState watchdog_state = thread_registry_get_state("WATCHDOG");
+    
+    // If watchdog is registered and running, check if it's actually alive
+    if (watchdog_state == THREAD_STATE_RUNNING) {
+        if (!is_watchdog_alive()) {
+            logger_log(LOG_ERROR, "Watchdog thread is hung, forcing restart...");
+            watchdog_state = THREAD_STATE_FAILED;  // Force restart
+        }
+    }
+    
+    // Start/restart watchdog if needed
+    if (watchdog_state == THREAD_STATE_UNKNOWN || 
+        watchdog_state == THREAD_STATE_FAILED || 
+        watchdog_state == THREAD_STATE_TERMINATED) {
+        
+        logger_log(LOG_WARN, "Watchdog thread not running, attempting start/restart");
+        
+        // If watchdog exists in registry but is dead/hung, deregister it
+        if (watchdog_state != THREAD_STATE_UNKNOWN) {
+            thread_registry_deregister("WATCHDOG");
+        }
+        
+        // Get fresh watchdog configuration
+        ThreadConfig* watchdog_config = get_watchdog_thread();
+        if (!watchdog_config) {
+            logger_log(LOG_ERROR, "Failed to get watchdog thread configuration");
+            return;
+        }
+        
+        // Reset runtime fields
+        watchdog_config->thread_id = 0;
+        
+        ThreadResult result = app_thread_create(watchdog_config);
+        if (result != THREAD_SUCCESS) {
+            logger_log(LOG_ERROR, "Failed to restart watchdog thread");
+        } else {
+            logger_log(LOG_INFO, "Watchdog thread restarted successfully");
+        }
+    }
+}
+
+void start_threads(void) {
     // Get suppressed threads from configuration
     const char* suppressed_list = get_config_string("debug", "suppress_threads", "");
     
     // Define all threads to start
     ThreadStartInfo threads_to_start[] = {
-        { get_demo_heartbeat_thread(), false }, // Demo thread is not essential
-        { get_logger_thread(), true }         // Logger is essential
+        { get_logger_thread(), true },           // Logger is essential
+        // { get_watchdog_thread(), true },         // Watchdog is essential
+        { get_server_thread(), false },          // Server thread is not essential
+        { get_client_thread(), false },          // Add client thread
+        { get_command_interface_thread(), false }, // Command interface is not essential
+        { get_demo_heartbeat_thread(), false }   // Demo thread is not essential
     };
     
     // Start each thread
@@ -248,8 +335,8 @@ void start_threads(void) {
             continue;
         }
         
-        result = app_thread_create(thread);
-        if (result != THREAD_REG_SUCCESS) {
+        ThreadResult result = app_thread_create(thread);
+        if (result != THREAD_SUCCESS) {
             logger_log(LOG_ERROR, "Failed to create thread %s (error: %d)", 
                       thread->label, result);
             if (is_essential) {
@@ -268,6 +355,16 @@ static void* thread_wrapper(ThreadConfig* thread_args) {
 
     // Set thread-specific data
     set_thread_label(thread_args->label);
+
+    // Register the thread
+    ThreadRegistryError reg_result = thread_registry_register(thread_args, true);
+    if (reg_result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to register thread '%s': %s", 
+            thread_args->label, 
+                    app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
+        
+        return (void*)(THREAD_ERROR_REGISTRATION_FAILED);
+    }
     
     // Update thread state to running
     thread_registry_update_state(thread_args->label, THREAD_STATE_RUNNING);
@@ -279,7 +376,7 @@ static void* thread_wrapper(ThreadConfig* thread_args) {
                   thread_args->label);
         thread_registry_update_state(thread_args->label, 
                                      THREAD_STATE_FAILED);
-        return (void*)THREAD_ERROR_INIT_FAILED;
+        return (void*)(THREAD_ERROR_INIT_FAILED);
     }
 
     // Wait for logger before any initialization
@@ -320,21 +417,29 @@ static void* thread_wrapper(ThreadConfig* thread_args) {
         }
     }
     
-    // Update thread state to terminated
+    // Update thread state to terminated and deregister
     thread_registry_update_state(thread_args->label, THREAD_STATE_TERMINATED);
+    
+    // Deregister the thread
+    ThreadRegistryError dereg_result = thread_registry_deregister(thread_args->label);
+    if (dereg_result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to deregister thread '%s': %s",
+            thread_args->label,
+            app_error_get_message(THREAD_REGISTRY_DOMAIN, dereg_result));
+    }
     
     return (void*)(uintptr_t)(run_result);
 }
 
-ThreadRegistryError app_thread_create(ThreadConfig* thread) {
+ThreadResult app_thread_create(ThreadConfig* thread) {
     if (!thread) {
-        return THREAD_REG_INVALID_ARGS;
+        return THREAD_ERROR_INVALID_ARGS;
     }
         
     // Check if thread is already registered
     if (thread_registry_is_registered(thread)) {
         logger_log(LOG_WARN, "Thread '%s' is already registered", thread->label);
-        return THREAD_REG_DUPLICATE_THREAD;
+        return THREAD_ERROR_ALREADY_EXISTS;
     }
     
     // Handle stubbed function pointers
@@ -360,7 +465,7 @@ ThreadRegistryError app_thread_create(ThreadConfig* thread) {
     if (platform_thread_create(&thread->thread_id, &attributes, 
                              (PlatformThreadFunction) thread_wrapper, thread) != PLATFORM_ERROR_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to create thread '%s'", thread->label);
-        return THREAD_REG_CREATION_FAILED;
+        return THREAD_ERROR_CREATE_FAILED;
     }
     
     // Call post-create function
@@ -368,19 +473,7 @@ ThreadRegistryError app_thread_create(ThreadConfig* thread) {
         thread->post_create_func(thread);
     }
     
-    // Register the thread
-    ThreadRegistryError reg_result = thread_registry_register(thread, true);
-    if (reg_result != THREAD_REG_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to register thread '%s': %s", 
-                  thread->label, 
-                  app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
-        return reg_result;
-    }
-    
-    // Update thread state
-    thread_registry_update_state(thread->label, THREAD_STATE_RUNNING);
-    
-    return THREAD_REG_SUCCESS;
+    return THREAD_SUCCESS;
 }
 
 /**

@@ -22,6 +22,7 @@
 
 // default config file
 static char config_file_name[MAX_PATH_LEN] = "config.ini";
+extern void check_watchdog(void);
 
 static void print_usage(const char *progname) {
     printf("Usage: %s [-c <config_file>]\n", progname);
@@ -84,11 +85,27 @@ static PlatformErrorCode init_app(void) {
         logger_log(LOG_INFO, "Using config file: %s\n", config_file_name); 
         logger_log(LOG_INFO, "Configuration: %s", config_load_result);
     }
+
     // Initialize logger
     char logger_init_result[LOG_MSG_BUFFER_SIZE];
     if (!init_logger_from_config(logger_init_result)) {
         printf("Failed to initialise logger: %s\n", logger_init_result);
         return PLATFORM_ERROR_SYSTEM;
+    }
+
+    // Initialize thread registry system
+    ThreadRegistryError reg_result = init_global_thread_registry();
+    if (reg_result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to initialize thread registry: %s",
+                  app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
+        return PLATFORM_ERROR_THREAD_CREATE;
+    }
+
+    // Initialize thread management
+    ThreadRegistryError thread_result = register_main_thread();
+    if (thread_result != THREAD_REG_SUCCESS) {
+        logger_log(LOG_ERROR, "Failed to initialize thread management");
+        return PLATFORM_ERROR_THREAD_CREATE;
     }
     
     // Initialize sockets
@@ -131,7 +148,8 @@ static PlatformErrorCode cleanup_app(void) {
     return result;
 }
 
-static bool send_demo_text_message(const char* msg_text) {
+static bool send_demo_text_message(void) {
+    const char* msg_text = "Message from main thread";
     Message_T message = {0};  // Zero-initialize the entire structure
     message.header.type = MSG_TYPE_TEST;
     size_t content_len = platform_strlen(msg_text) + 1;  // Include null terminator
@@ -166,7 +184,7 @@ int main(int argc, char *argv[]) {
 
     result = init_app();
     if (result != PLATFORM_ERROR_SUCCESS) {
-        platform_get_error_message(result, error_message, sizeof(error_message));
+        platform_get_error_message_from_code(result, error_message, sizeof(error_message));
         char buffer[512];
         platform_strformat(buffer, sizeof(buffer), "Failed to initialize application: %s\n", error_message);
         stream_print(stderr, "%s", buffer);
@@ -179,20 +197,19 @@ int main(int argc, char *argv[]) {
 
     // Main application loop with heartbeat
     while (!shutdown_signalled()) {
+        check_watchdog();
         // Send message to demo thread
-        if (!send_demo_text_message("Message from main thread")) {
-            logger_log(LOG_ERROR, "Failed to send demo message");
+        if (!send_demo_text_message()) {
+            // logger_log(LOG_ERROR, "Failed to send demo message");
         }
         
         logger_log(LOG_DEBUG, "HEARTBEAT");
-        stream_print(stdout, "Main about to sleep\n");
         sleep_ms(762);
-        stream_print(stdout, "Main has awoken\n");
     }
     
     result = cleanup_app();
     if (result != PLATFORM_ERROR_SUCCESS) {
-        platform_get_error_message(result, error_message, sizeof(error_message));
+        platform_get_error_message_from_code(result, error_message, sizeof(error_message));
         char buffer[512];
         platform_strformat(buffer, sizeof(buffer), "Error during cleanup: %s\n", error_message);
         stream_print(stderr, "%s", buffer);

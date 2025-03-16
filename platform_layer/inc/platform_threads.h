@@ -142,6 +142,24 @@ PlatformErrorCode platform_thread_get_priority(
  */
 void platform_thread_yield(void);
 
+typedef enum PlatformThreadStatus {
+    PLATFORM_THREAD_ALIVE,      // Thread is running
+    PLATFORM_THREAD_DEAD,       // Thread no longer exists
+    PLATFORM_THREAD_TERMINATED, // Thread has terminated normally
+    PLATFORM_THREAD_UNKNOWN     // Status cannot be determined
+} PlatformThreadStatus;
+
+/**
+ * Get the current status of a thread
+ * 
+ * @param thread_id The platform-specific thread identifier
+ * @param status Pointer to store the thread status
+ * @return PLATFORM_ERROR_SUCCESS if status was retrieved successfully
+ *         PLATFORM_ERROR_INVALID_ARGUMENT if status is NULL
+ *         PLATFORM_ERROR_UNKNOWN if platform-specific error occurred
+ */
+PlatformErrorCode platform_thread_get_status(PlatformThreadId thread_id, PlatformThreadStatus* status);
+
 #ifdef __cplusplus
 }
 #endif

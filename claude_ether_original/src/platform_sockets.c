@@ -134,6 +134,8 @@ const char* platform_socket_strerror(PlatformSocketError error) {
     switch (error) {
         case PLATFORM_SOCKET_SUCCESS:
             return "Success";
+        case PLATFORM_SOCKET_ERROR_INVALID:
+            return "Invalid socket";
         case PLATFORM_SOCKET_ERROR_CREATE:
             return "Error creating socket";
         case PLATFORM_SOCKET_ERROR_RESOLVE:

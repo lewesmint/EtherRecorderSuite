@@ -51,6 +51,11 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
     // Set send timeout
     if (options->send_timeout_ms > 0) {
         DWORD timeout = options->send_timeout_ms;
+        if (timeout > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
+            timeout = PLATFORM_MAX_WAIT_TIMEOUT_MS;
+        } else if (timeout < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
+            timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
+        }
         if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
@@ -59,6 +64,11 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
     // Set receive timeout
     if (options->recv_timeout_ms > 0) {
         DWORD timeout = options->recv_timeout_ms;
+        if (timeout > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
+            timeout = PLATFORM_MAX_WAIT_TIMEOUT_MS;
+        } else if (timeout < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
+            timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
+        }
         if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
@@ -142,22 +152,94 @@ PlatformErrorCode platform_socket_connect(
     
     struct addrinfo* result = NULL;
     char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%u", address->port);
+    _snprintf_s(port_str, sizeof(port_str), _TRUNCATE, "%u", address->port);
     
     int err = getaddrinfo(address->host, port_str, &hints, &result);
     if (err != 0) {
         return PLATFORM_ERROR_SOCKET_RESOLVE;
     }
 
+    // For non-blocking sockets, just try to connect and return
+    if (!handle->opts.blocking) {
+        int connect_result = connect(handle->fd, result->ai_addr, (int)result->ai_addrlen);
+        freeaddrinfo(result);
+        
+        if (connect_result == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            if (error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) {
+                return PLATFORM_ERROR_WOULD_BLOCK;
+            }
+            return PLATFORM_ERROR_SOCKET_CONNECT;
+        }
+        return PLATFORM_ERROR_SUCCESS;
+    }
+
+    // For blocking sockets with timeout
+    // Temporarily set non-blocking mode
+    u_long mode = 1;
+    if (ioctlsocket(handle->fd, FIONBIO, &mode) == SOCKET_ERROR) {
+        freeaddrinfo(result);
+        return PLATFORM_ERROR_SOCKET_OPTION;
+    }
+
+    // Attempt connection
     int connect_result = connect(handle->fd, result->ai_addr, (int)result->ai_addrlen);
     freeaddrinfo(result);
 
-    if (connect_result == SOCKET_ERROR) {
-        return (WSAGetLastError() == WSAEWOULDBLOCK && !handle->opts.blocking) ? 
-               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_CONNECT;
+    if (connect_result == 0) {
+        // Immediate success - restore blocking mode
+        mode = 0;
+        ioctlsocket(handle->fd, FIONBIO, &mode);
+        return PLATFORM_ERROR_SUCCESS;
     }
 
-    return PLATFORM_ERROR_SUCCESS;
+    if (WSAGetLastError() != WSAEWOULDBLOCK) {
+        // Restore blocking mode before returning error
+        mode = 0;
+        ioctlsocket(handle->fd, FIONBIO, &mode);
+        return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+
+    // Wait for connection with timeout
+    fd_set write_fds, except_fds;
+    FD_ZERO(&write_fds);
+    FD_ZERO(&except_fds);
+    FD_SET(handle->fd, &write_fds);
+    FD_SET(handle->fd, &except_fds);
+
+    struct timeval timeout = {
+        .tv_sec = handle->opts.connect_timeout_ms / 1000,
+        .tv_usec = (handle->opts.connect_timeout_ms % 1000) * 1000
+    };
+
+    int select_result = select(0, NULL, &write_fds, &except_fds, &timeout);
+
+    // Restore blocking mode
+    mode = 0;
+    ioctlsocket(handle->fd, FIONBIO, &mode);
+
+    if (select_result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+    if (select_result == SOCKET_ERROR) {
+        return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+
+    // Check if connection succeeded
+    if (FD_ISSET(handle->fd, &except_fds)) {
+        return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+
+    if (FD_ISSET(handle->fd, &write_fds)) {
+        int error;
+        int len = sizeof(error);
+        if (getsockopt(handle->fd, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == 0 && error == 0) {
+            return PLATFORM_ERROR_SUCCESS;
+        }
+        return PLATFORM_ERROR_SOCKET_CONNECT;
+    }
+
+    return PLATFORM_ERROR_SOCKET_CONNECT;
 }
 
 PlatformErrorCode platform_socket_bind(
@@ -367,4 +449,82 @@ const char* platform_socket_error_to_string(PlatformErrorCode error) {
         default:
             return "Unknown error";
     }
+}
+
+PlatformErrorCode platform_socket_wait_readable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms)
+{
+    if (!handle) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Use default timeout if none specified (0)
+    if (timeout_ms == 0) {
+        timeout_ms = PLATFORM_DEFAULT_WAIT_TIMEOUT_MS;
+    }
+    // Clamp timeout to valid range
+    else if (timeout_ms > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MAX_WAIT_TIMEOUT_MS;
+    } else if (timeout_ms < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MIN_WAIT_TIMEOUT_MS;
+    }
+
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(handle->fd, &read_fds);
+
+    struct timeval tv = {
+        .tv_sec = timeout_ms / PLATFORM_MS_PER_SEC,
+        .tv_usec = (timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
+    };
+
+    int result = select(handle->fd + 1, &read_fds, NULL, NULL, &tv);
+    if (result == SOCKET_ERROR) {
+        return PLATFORM_ERROR_SOCKET_SELECT;
+    }
+    if (result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_socket_wait_writable(
+    PlatformSocketHandle handle,
+    uint32_t timeout_ms)
+{
+    if (!handle) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Use default timeout if none specified (0)
+    if (timeout_ms == 0) {
+        timeout_ms = PLATFORM_DEFAULT_WAIT_TIMEOUT_MS;
+    }
+    // Clamp timeout to valid range
+    else if (timeout_ms > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MAX_WAIT_TIMEOUT_MS;
+    } else if (timeout_ms < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
+        timeout_ms = PLATFORM_MIN_WAIT_TIMEOUT_MS;
+    }
+
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(handle->fd, &write_fds);
+
+    struct timeval tv = {
+        .tv_sec = timeout_ms / PLATFORM_MS_PER_SEC,
+        .tv_usec = (timeout_ms % PLATFORM_MS_PER_SEC) * PLATFORM_US_PER_MS
+    };
+
+    int result = select(handle->fd + 1, NULL, &write_fds, NULL, &tv);
+    if (result == SOCKET_ERROR) {
+        return PLATFORM_ERROR_SOCKET_SELECT;
+    }
+    if (result == 0) {
+        return PLATFORM_ERROR_TIMEOUT;
+    }
+
+    return PLATFORM_ERROR_SUCCESS;
 }

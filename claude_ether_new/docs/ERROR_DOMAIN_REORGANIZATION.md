@@ -1,121 +1,111 @@
-# Error Domain Reorganization Proposal
+# Error Domain Reorganization
 
-## Current Status
-Currently, thread-related errors are spread across three domains:
-- THREAD_REGISTRY_DOMAIN
-- THREAD_STATUS_DOMAIN
-- THREAD_RESULT_DOMAIN
+## Current Implementation
 
-Several errors in these domains actually relate to other subsystems (queues, logging, etc.).
-
-## Proposed Changes
-
-### New Domain Structure
+### Domain Structure
 ```c
 enum ErrorDomain {
-    THREAD_REGISTRY_DOMAIN,    // Core registry operations
-    THREAD_STATUS_DOMAIN,      // Thread lifecycle status
-    THREAD_RESULT_DOMAIN,     // Thread execution results
-    SYNC_DOMAIN,              // Synchronization primitives
-    QUEUE_DOMAIN,             // Message queue operations
-    RESOURCE_DOMAIN,          // Resource management
-    LOGGER_DOMAIN,            // Logging subsystem
-    CONFIG_DOMAIN,            // Configuration operations
+    PLATFORM_DOMAIN,         // Core platform operations
+    THREAD_DOMAIN,          // Thread and synchronization
+    NETWORK_DOMAIN,         // Socket and network operations
+    RESOURCE_DOMAIN,        // Resource management
+    LOGGER_DOMAIN,          // Logging subsystem
+    CONFIG_DOMAIN,          // Configuration operations
     ERROR_DOMAIN_MAX
 }
 ```
 
-### Proposed Error Migration
+### Error Code Organization
 
-#### To SYNC_DOMAIN
-- `THREAD_REG_LOCK_ERROR`
-- `THREAD_ERROR_MUTEX_ERROR`
+#### Platform Domain
+- Platform-specific operations
+- System call wrappers
+- Resource allocation/deallocation
+- File operations
 
-#### To QUEUE_DOMAIN
-- `THREAD_REG_QUEUE_FULL`
-- `THREAD_REG_QUEUE_EMPTY`
-- `THREAD_REG_QUEUE_ERROR`
-- `THREAD_ERROR_QUEUE_ERROR`
+#### Thread Domain
+- Thread lifecycle management
+- Synchronization primitives
+- Thread registry operations
+- Thread group coordination
 
-#### To RESOURCE_DOMAIN
-- `THREAD_REG_ALLOCATION_FAILED`
+#### Network Domain
+- Socket operations
+- Connection management
+- Protocol handling
+- Network I/O
 
-#### To LOGGER_DOMAIN
-- `THREAD_ERROR_LOGGER_TIMEOUT`
+#### Resource Domain
+- Memory management
+- Handle tracking
+- Resource pools
+- Cleanup operations
 
-#### To CONFIG_DOMAIN
-- `THREAD_ERROR_CONFIG_ERROR`
+#### Logger Domain
+- Log file operations
+- Message formatting
+- Output routing
+- Log level control
 
-## Implementation Considerations
+#### Config Domain
+- Configuration parsing
+- Parameter validation
+- Default handling
+- Schema verification
 
-### Function Return Types
-Before implementing, need to review:
-- All functions returning thread-related error codes
-- Error handling patterns in calling code
-- Error transformation/mapping functions
-- Error logging and reporting systems
+## Error Handling Guidelines
 
-### Backward Compatibility
-Consider:
-- Impact on existing error handling code
-- Need for error code mapping layer
-- Version migration strategy
-- Documentation updates
+### Error Reporting
+1. Use specific error codes within appropriate domains
+2. Include contextual information
+3. Maintain error chain when propagating
+4. Preserve original error details
 
-### Required Analysis
-1. **Function Review**
-   - Map all functions to their error return types
-   - Identify error propagation chains
-   - Document error handling patterns
+### Error Recovery
+1. Define recovery strategies per domain
+2. Implement clean rollback procedures
+3. Maintain system consistency
+4. Log recovery attempts
 
-2. **Impact Assessment**
-   - Effect on existing code
-   - Testing requirements
-   - Documentation updates needed
+### Best Practices
+- Use domain-specific error codes
+- Include error context
+- Implement proper cleanup
+- Document error conditions
+- Provide recovery guidance
 
-3. **Migration Strategy**
-   - Phased approach vs. direct replacement
-   - Temporary compatibility layer needs
-   - Version control considerations
+## Implementation Requirements
 
-### Next Steps
-1. Create comprehensive list of affected functions
-2. Document current error handling patterns
-3. Create test cases covering error conditions
-4. Design migration strategy
-5. Create prototype implementation
-6. Review with team
+### Error Code Definition
+```c
+typedef struct {
+    ErrorDomain domain;
+    uint32_t code;
+    const char* message;
+    const char* context;
+} PlatformError;
+```
 
-## Related Files to Review
-- `thread_registry.h/c`
-- `thread_group.h/c`
-- `platform_error.h`
-- Error handling utility functions
-- Logging system integration
-- Test suites
+### Error Handling Functions
+```c
+PlatformError platform_error_get(void);
+void platform_error_set(ErrorDomain domain, uint32_t code, const char* context);
+const char* platform_error_string(PlatformError* error);
+```
 
-## Questions to Address
-1. How to handle cross-domain errors?
-2. Should we maintain error code ranges per domain?
-3. Impact on error message formatting?
-4. Effect on debugging and logging?
-5. Performance implications of domain checks?
+## Migration Plan
 
-## Future Considerations
-- Error aggregation across domains
-- Domain-specific error handling policies
-- Error recovery strategies
-- Monitoring and metrics
+1. Update error codes in platform layer
+2. Modify error handling in thread registry
+3. Update network operations
+4. Revise resource management
+5. Update logging system
+6. Modify configuration handling
 
-## References
-- Current error handling documentation
-- Platform abstraction layer design
-- Thread coordination design
-- Logging system design
+## Verification
 
-## Notes
-This reorganization should be considered as part of a larger error handling improvement initiative. Implementation should wait until we have:
-1. Complete function analysis
-2. Test coverage metrics
-3. Impact assessment
-4. Team consensus on approach
+1. Test all error paths
+2. Verify error propagation
+3. Validate recovery procedures
+4. Check error logging
+5. Review error documentation

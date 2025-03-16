@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Interface Protocol Specification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .message-structure {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .note {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-left: 4px solid #ffeeba;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Command Interface Protocol Specification</h1>
+
+    <h2>Message Packet Structure</h2>
+    <p>Each command message consists of the following components in order:</p>
+
+    <table>
+        <tr>
+            <th>Component</th>
+            <th>Size</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Start Marker</td>
+            <td>4 bytes</td>
+            <td>Fixed value: <code>0xBAADF00D</code> (big-endian)</td>
+        </tr>
+        <tr>
+            <td>Length</td>
+            <td>4 bytes</td>
+            <td>Total message length including all headers and markers (big-endian)</td>
+        </tr>
+        <tr>
+            <td>Message Index</td>
+            <td>4 bytes</td>
+            <td>Sequence number for the message (big-endian)</td>
+        </tr>
+        <tr>
+            <td>Message Body</td>
+            <td>Variable</td>
+            <td>Actual command content</td>
+        </tr>
+        <tr>
+            <td>End Marker</td>
+            <td>4 bytes</td>
+            <td>Fixed value: <code>0xDEADBEEF</code> (big-endian)</td>
+        </tr>
+    </table>
+
+    <h2>Visual Representation</h2>
+    <div class="message-structure">
+        [Start Marker][Length][Message Index][Message Body][End Marker]<br>
+        &nbsp;&nbsp;&nbsp;4 bytes&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4bytes&nbsp;&nbsp;&nbsp;4 bytes&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;N bytes&nbsp;&nbsp;&nbsp;&nbsp;4 bytes
+    </div>
+
+    <h2>Constraints</h2>
+    <ul>
+        <li>Minimum total message size: 16 bytes</li>
+        <li>Maximum total message size: 2016 bytes</li>
+        <li>Maximum body size: 2000 bytes</li>
+        <li>All multi-byte integers must be in network byte order (big-endian)</li>
+        <li>Message body should be null-terminated if containing text</li>
+    </ul>
+
+    <h2>ACK Response</h2>
+    <p>After receiving a valid message, the server responds with an ACK packet following the same structure:</p>
+    <ul>
+        <li>Start Marker: <code>0xBAADF00D</code></li>
+        <li>Length: 16 + ack_body_length</li>
+        <li>ACK Index: Incremental counter</li>
+        <li>ACK Body: Text string "ACK &lt;received_index&gt;"</li>
+        <li>End Marker: <code>0xDEADBEEF</code></li>
+    </ul>
+
+    <div class="note">
+        <strong>Note:</strong> The Length field includes all components of the message, including both markers, 
+        the length field itself, the message index, and the message body.
+    </div>
+
+</body>
+</html>

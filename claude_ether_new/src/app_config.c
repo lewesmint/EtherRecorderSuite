@@ -223,7 +223,7 @@ uint64_t get_config_hex(const char *section, const char *key, uint64_t default_v
     return value ? strtoull(value, NULL, 16) : default_value;
 }
 
-// Add this implementation
+
 uint16_t get_config_uint16(const char* section, const char* key, uint16_t default_value) {
     int value = get_config_int(section, key, default_value);
     if (value < 0 || value > UINT16_MAX) {

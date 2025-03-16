@@ -268,111 +268,44 @@
      
      // Provide consistent, human-readable messages for each error code
      switch (error_code) {
-         case PLATFORM_ERROR_SUCCESS:
-             snprintf(buffer, buffer_size, "Success");
-             break;
-         case PLATFORM_ERROR_UNKNOWN:
-             snprintf(buffer, buffer_size, "Unknown error");
-             break;
-         case PLATFORM_ERROR_INVALID_ARGUMENT:
-             snprintf(buffer, buffer_size, "Invalid argument");
-             break;
-         case PLATFORM_ERROR_NOT_IMPLEMENTED:
-             snprintf(buffer, buffer_size, "Not implemented");
-             break;
-         case PLATFORM_ERROR_NOT_SUPPORTED:
-             snprintf(buffer, buffer_size, "Not supported");
-             break;
-         case PLATFORM_ERROR_PERMISSION_DENIED:
-             snprintf(buffer, buffer_size, "Permission denied");
-             break;
-         case PLATFORM_ERROR_TIMEOUT:
-             snprintf(buffer, buffer_size, "Operation timed out");
-             break;
-         case PLATFORM_ERROR_SOCKET_CREATE:
-             snprintf(buffer, buffer_size, "Failed to create socket");
-             break;
-         case PLATFORM_ERROR_SOCKET_BIND:
-             snprintf(buffer, buffer_size, "Failed to bind socket");
-             break;
-         case PLATFORM_ERROR_SOCKET_CONNECT:
-             snprintf(buffer, buffer_size, "Failed to connect socket");
-             break;
-         case PLATFORM_ERROR_SOCKET_LISTEN:
-             snprintf(buffer, buffer_size, "Failed to listen on socket");
-             break;
-         case PLATFORM_ERROR_SOCKET_ACCEPT:
-             snprintf(buffer, buffer_size, "Failed to accept connection");
-             break;
-         case PLATFORM_ERROR_SOCKET_SEND:
-             snprintf(buffer, buffer_size, "Failed to send data");
-             break;
-         case PLATFORM_ERROR_SOCKET_RECEIVE:
-             snprintf(buffer, buffer_size, "Failed to receive data");
-             break;
-         case PLATFORM_ERROR_SOCKET_CLOSED:
-             snprintf(buffer, buffer_size, "Socket is closed");
-             break;
-         case PLATFORM_ERROR_HOST_NOT_FOUND:
-             snprintf(buffer, buffer_size, "Host not found");
-             break;
-         case PLATFORM_ERROR_THREAD_CREATE:
-             snprintf(buffer, buffer_size, "Failed to create thread");
-             break;
-         case PLATFORM_ERROR_THREAD_JOIN:
-             snprintf(buffer, buffer_size, "Failed to join thread");
-             break;
-         case PLATFORM_ERROR_THREAD_DETACH:
-             snprintf(buffer, buffer_size, "Failed to detach thread");
-             break;
-         case PLATFORM_ERROR_MUTEX_INIT:
-             snprintf(buffer, buffer_size, "Failed to initialise mutex");
-             break;
-         case PLATFORM_ERROR_MUTEX_LOCK:
-             snprintf(buffer, buffer_size, "Failed to lock mutex");
-             break;
-         case PLATFORM_ERROR_MUTEX_UNLOCK:
-             snprintf(buffer, buffer_size, "Failed to unlock mutex");
-             break;
-         case PLATFORM_ERROR_CONDITION_INIT:
-             snprintf(buffer, buffer_size, "Failed to initialise condition variable");
-             break;
-         case PLATFORM_ERROR_CONDITION_WAIT:
-             snprintf(buffer, buffer_size, "Failed to wait on condition variable");
-             break;
-         case PLATFORM_ERROR_CONDITION_SIGNAL:
-             snprintf(buffer, buffer_size, "Failed to signal condition variable");
-             break;
-         case PLATFORM_ERROR_FILE_NOT_FOUND:
-             snprintf(buffer, buffer_size, "File not found");
-             break;
-         case PLATFORM_ERROR_FILE_EXISTS:
-             snprintf(buffer, buffer_size, "File already exists");
-             break;
-         case PLATFORM_ERROR_FILE_ACCESS:
-             snprintf(buffer, buffer_size, "File access error");
-             break;
-         case PLATFORM_ERROR_DIRECTORY_NOT_FOUND:
-             snprintf(buffer, buffer_size, "Directory not found");
-             break;
-         case PLATFORM_ERROR_DIRECTORY_EXISTS:
-             snprintf(buffer, buffer_size, "Directory already exists");
-             break;
-         case PLATFORM_ERROR_DIRECTORY_ACCESS:
-             snprintf(buffer, buffer_size, "Directory access error");
-             break;
-         case PLATFORM_ERROR_MEMORY_ALLOC:
-             snprintf(buffer, buffer_size, "Memory allocation error");
-             break;
-         case PLATFORM_ERROR_MEMORY_FREE:
-             snprintf(buffer, buffer_size, "Memory free error");
-             break;
-         case PLATFORM_ERROR_MEMORY_ACCESS:
-             snprintf(buffer, buffer_size, "Memory access error");
-             break;
-         default:
-             snprintf(buffer, buffer_size, "Error code %d", error_code);
-             break;
+         // General errors
+         case PLATFORM_ERROR_SUCCESS:               snprintf(buffer, buffer_size, "Success"); break;
+         case PLATFORM_ERROR_UNKNOWN:               snprintf(buffer, buffer_size, "Unknown error"); break;
+         case PLATFORM_ERROR_INVALID_ARGUMENT:      snprintf(buffer, buffer_size, "Invalid argument"); break;
+         case PLATFORM_ERROR_NOT_IMPLEMENTED:       snprintf(buffer, buffer_size, "Not implemented"); break;
+         case PLATFORM_ERROR_NOT_SUPPORTED:         snprintf(buffer, buffer_size, "Not supported"); break;
+         case PLATFORM_ERROR_PERMISSION_DENIED:     snprintf(buffer, buffer_size, "Permission denied"); break;
+         case PLATFORM_ERROR_TIMEOUT:               snprintf(buffer, buffer_size, "Operation timed out"); break;
+
+         // Socket-specific errors
+         case PLATFORM_ERROR_SOCKET_CREATE:         snprintf(buffer, buffer_size, "Failed to create socket"); break;
+         case PLATFORM_ERROR_SOCKET_BIND:           snprintf(buffer, buffer_size, "Failed to bind socket"); break;
+         case PLATFORM_ERROR_SOCKET_CONNECT:        snprintf(buffer, buffer_size, "Failed to connect socket"); break;
+         case PLATFORM_ERROR_SOCKET_LISTEN:         snprintf(buffer, buffer_size, "Failed to listen on socket"); break;
+         case PLATFORM_ERROR_SOCKET_ACCEPT:         snprintf(buffer, buffer_size, "Failed to accept connection"); break;
+         case PLATFORM_ERROR_SOCKET_SEND:           snprintf(buffer, buffer_size, "Failed to send data"); break;
+         case PLATFORM_ERROR_SOCKET_RECEIVE:        snprintf(buffer, buffer_size, "Failed to receive data"); break;
+         case PLATFORM_ERROR_SOCKET_CLOSED:         snprintf(buffer, buffer_size, "Socket connection closed"); break;
+         case PLATFORM_ERROR_HOST_NOT_FOUND:        snprintf(buffer, buffer_size, "Host not found or unreachable"); break;
+         case PLATFORM_ERROR_CONNECTION_REFUSED:    snprintf(buffer, buffer_size, "Connection refused by server"); break;
+         case PLATFORM_ERROR_NETWORK_DOWN:          snprintf(buffer, buffer_size, "Network interface is down"); break;
+         case PLATFORM_ERROR_NETWORK_UNREACHABLE:   snprintf(buffer, buffer_size, "Network is unreachable"); break;
+         case PLATFORM_ERROR_SOCKET_OPTION:         snprintf(buffer, buffer_size, "Failed to set socket option"); break;
+         case PLATFORM_ERROR_SOCKET_RESOLVE:        snprintf(buffer, buffer_size, "Failed to resolve hostname"); break;
+         case PLATFORM_ERROR_SOCKET_SELECT:         snprintf(buffer, buffer_size, "Socket select operation failed"); break;
+
+         // Memory errors
+         case PLATFORM_ERROR_MEMORY_ALLOC:          snprintf(buffer, buffer_size, "Memory allocation failed"); break;
+         case PLATFORM_ERROR_MEMORY_FREE:           snprintf(buffer, buffer_size, "Memory free failed"); break;
+         case PLATFORM_ERROR_MEMORY_ACCESS:         snprintf(buffer, buffer_size, "Invalid memory access"); break;
+
+         // File errors
+         case PLATFORM_ERROR_FILE_NOT_FOUND:        snprintf(buffer, buffer_size, "File not found"); break;
+         case PLATFORM_ERROR_FILE_ACCESS:           snprintf(buffer, buffer_size, "File access error"); break;
+         case PLATFORM_ERROR_DIRECTORY_NOT_FOUND:   snprintf(buffer, buffer_size, "Directory not found"); break;
+         case PLATFORM_ERROR_DIRECTORY_ACCESS:      snprintf(buffer, buffer_size, "Directory access error"); break;
+
+         default:                                   snprintf(buffer, buffer_size, "Error code %d", error_code); break;
      }
      
      return buffer;

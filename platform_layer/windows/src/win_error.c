@@ -21,19 +21,7 @@ static __declspec(thread) struct {
     .message = {0}
 };
 
-static void sanitize_error_message(char* message) {
-    if (!message) {
-        return;
-    }
-    
-    size_t len = strlen(message);
-    while (len > 0 && (message[len-1] == ' ' || 
-                       message[len-1] == '\n' || 
-                       message[len-1] == '\r' || 
-                       message[len-1] == '.')) {
-        message[--len] = '\0';
-    }
-}
+extern void sanitize_error_message(char* message);
 
 static int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain) {
     switch (domain) {
@@ -160,39 +148,4 @@ PlatformErrorCode platform_set_system_error(DWORD system_error) {
         map_windows_error(system_error, PLATFORM_ERROR_DOMAIN_SYSTEM),
         system_error
     );
-}
-
-PlatformErrorCode platform_get_error_message(
-    int32_t code,
-    char* buffer,
-    size_t buffer_size) {
-    if (!buffer || buffer_size == 0) {
-        return PLATFORM_ERROR_INVALID_ARGUMENT;
-    }
-
-    const char* message;
-    switch (code) {
-        case PLATFORM_ERROR_SUCCESS:           message = "Success"; break;
-        case PLATFORM_ERROR_UNKNOWN:           message = "Unknown error"; break;
-        case PLATFORM_ERROR_INVALID_ARGUMENT:  message = "Invalid argument"; break;
-        case PLATFORM_ERROR_NOT_IMPLEMENTED:   message = "Not implemented"; break;
-        case PLATFORM_ERROR_NOT_SUPPORTED:     message = "Not supported"; break;
-        case PLATFORM_ERROR_PERMISSION_DENIED: message = "Permission denied"; break;
-        case PLATFORM_ERROR_TIMEOUT:           message = "Operation timed out"; break;
-        case PLATFORM_ERROR_NOT_FOUND:         message = "Not found"; break;
-        case PLATFORM_ERROR_ALREADY_EXISTS:    message = "Already exists"; break;
-        case PLATFORM_ERROR_OUT_OF_MEMORY:     message = "Out of memory"; break;
-        case PLATFORM_ERROR_BUSY:              message = "Resource busy"; break;
-        case PLATFORM_ERROR_WOULD_BLOCK:       message = "Operation would block"; break;
-        case PLATFORM_ERROR_SOCKET_CREATE:     message = "Failed to create socket"; break;
-        case PLATFORM_ERROR_SOCKET_BIND:       message = "Failed to bind socket"; break;
-        case PLATFORM_ERROR_SOCKET_CONNECT:    message = "Failed to connect"; break;
-        case PLATFORM_ERROR_SOCKET_CLOSED:     message = "Connection closed"; break;
-        case PLATFORM_ERROR_HOST_NOT_FOUND:    message = "Host not found"; break;
-        default:                               message = "Unrecognized error code";
-    }
-
-    strncpy(buffer, message, buffer_size - 1);
-    buffer[buffer_size - 1] = '\0';
-    return PLATFORM_ERROR_SUCCESS;
 }

@@ -15,6 +15,28 @@ extern "C" {
 #endif
 
 /**
+ * @brief Time conversion constants
+ */
+#define PLATFORM_MS_PER_SEC          1000
+#define PLATFORM_US_PER_MS           1000
+#define PLATFORM_NS_PER_US           1000
+#define PLATFORM_NS_PER_MS           1000000
+#define PLATFORM_NS_PER_SEC          1000000000
+
+/**
+ * @brief Default timeout values (in milliseconds)
+ */
+#define PLATFORM_DEFAULT_WAIT_TIMEOUT_MS     5000    // 5 seconds
+#define PLATFORM_MIN_WAIT_TIMEOUT_MS         1       // 1 millisecond
+#define PLATFORM_MAX_WAIT_TIMEOUT_MS         300000  // 5 minutes
+
+/**
+ * @brief Sleep interval constants (in milliseconds)
+ */
+#define PLATFORM_MIN_SLEEP_INTERVAL_MS       1       // 1 millisecond
+#define PLATFORM_DEFAULT_SLEEP_INTERVAL_MS   10      // 10 milliseconds
+
+/**
  * @brief Opaque high-resolution timestamp type
  */
 typedef struct {

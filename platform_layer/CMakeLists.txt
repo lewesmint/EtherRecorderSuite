@@ -66,6 +66,11 @@ else()
     )
 endif()
 
+# Common sources
+file(GLOB_RECURSE COMMON_SOURCES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+
 # Platform-specific sources
 if(WIN32)
     file(GLOB_RECURSE PLATFORM_SOURCES 
@@ -86,8 +91,8 @@ else()
     )
 endif()
 
-# Create the library
-add_library(platform_layer ${PLATFORM_SOURCES})
+# Create the library with both common and platform-specific sources
+add_library(platform_layer ${COMMON_SOURCES} ${PLATFORM_SOURCES})
 
 # Set include directories using target_include_directories
 target_include_directories(platform_layer

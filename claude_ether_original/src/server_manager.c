@@ -58,8 +58,6 @@
  */
 static SOCKET setup_server_socket(struct sockaddr_in* addr, uint16_t port) {
     int backoff = 1;  // Start with a 1-second backoff
-    int backoff_max = get_config_int("network", "server.backoff_max_seconds", DEFAULT_LISTEN_BACKOFF_MAX_SECONDS);
-    int retry_limit = get_config_int("network", "server.retry_limit", DEFAULT_LISTEN_RETRY_LIMIT);
     int retry_count = 0;
     
     while (!shutdown_signalled()) {
@@ -94,11 +92,6 @@ void* serverListenerThread(void* arg) {
     AppThread_T* thread_info = (AppThread_T*)arg;
     CommsThreadArgs_T* server_info = (CommsThreadArgs_T*)thread_info->data;
     set_thread_label(thread_info->label);
-    
-    // Load configuration
-    uint16_t port = get_config_uint16("network", "server.port", server_info->port);
-    bool is_tcp = get_config_bool("network", "server.is_tcp", server_info->is_tcp);
-    // int thread_wait_timeout = get_config_int("network", "server.thread_wait_timeout_ms", DEFAULT_THREAD_WAIT_TIMEOUT_MS);
     
     logger_log(LOG_INFO, "Server Manager starting on port: %d, protocol: %s", 
                port, is_tcp ? "TCP" : "UDP");
