@@ -53,7 +53,7 @@ static ProcessResult process_wait_for_start(PlatformSocketHandle sock, CommandCo
 
     uint32_t marker;
     memcpy(&marker, ctx->buffer, 4);
-    marker = ntohl(marker);
+    marker = platform_ntohl(marker);
 
     if (marker != START_MARKER) {
         logger_log(LOG_ERROR, "Invalid start marker: 0x%08X", marker);
@@ -72,7 +72,7 @@ static ProcessResult process_wait_for_length(PlatformSocketHandle sock, CommandC
 
     uint32_t length;
     memcpy(&length, ctx->buffer + 4, 4);
-    ctx->message_length = ntohl(length);
+    ctx->message_length = platform_ntohl(length);
 
     if (ctx->message_length > MAX_BUFFER_SIZE || ctx->message_length < 12) {
         logger_log(LOG_ERROR, "Invalid message length: %zu", ctx->message_length);
@@ -92,7 +92,7 @@ static ProcessResult process_wait_for_message(PlatformSocketHandle sock, Command
     // Verify end marker
     uint32_t end_marker;
     memcpy(&end_marker, ctx->buffer + ctx->message_length - 4, 4);
-    end_marker = ntohl(end_marker);
+    end_marker = platform_ntohl(end_marker);
 
     if (end_marker != END_MARKER) {
         logger_log(LOG_ERROR, "Invalid end marker: 0x%08X", end_marker);
@@ -129,22 +129,22 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
     uint8_t ack_buffer[256];
 
     // Pack start marker
-    uint32_t tmp = htonl(START_MARKER);
+    uint32_t tmp = platform_htonl(START_MARKER);
     memcpy(ack_buffer, &tmp, 4);
 
     // Pack length
-    tmp = htonl(ack_packet_length);
+    tmp = platform_htonl(ack_packet_length);
     memcpy(ack_buffer + 4, &tmp, 4);
 
     // Pack ACK index
-    tmp = htonl(ctx->ack_index++);
+    tmp = platform_htonl(ctx->ack_index++);
     memcpy(ack_buffer + 8, &tmp, 4);
 
     // Pack ACK body
     memcpy(ack_buffer + 12, ack_body, ack_body_len);
 
     // Pack end marker
-    tmp = htonl(END_MARKER);
+    tmp = platform_htonl(END_MARKER);
     memcpy(ack_buffer + 12 + ack_body_len, &tmp, 4);
 
     size_t bytes_sent = 0;
@@ -190,7 +190,7 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
         }
 
         // Process state machine
-        ProcessResult result;
+        ProcessResult result = PROCESS_FAIL;  // Initialize with default value
         switch (ctx.current_state) {
             case WAIT_FOR_START:
                 result = process_wait_for_start(client_sock, &ctx);
@@ -203,6 +203,9 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
                 break;
             case SEND_ACK:
                 result = process_send_ack(client_sock, &ctx);
+                break;
+            default:
+                logger_log(LOG_ERROR, "Invalid command state: %d", ctx.current_state);
                 break;
         }
 

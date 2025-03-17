@@ -28,18 +28,25 @@ static int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain) {
         case PLATFORM_ERROR_DOMAIN_NETWORK:
             switch (error_code) {
                 case ERROR_ACCESS_DENIED:       return PLATFORM_ERROR_PERMISSION_DENIED;
-                case WSAEADDRINUSE:            return PLATFORM_ERROR_SOCKET_BIND;
-                case WSAECONNREFUSED:          return PLATFORM_ERROR_SOCKET_CONNECT;
+                case ERROR_PATH_NOT_FOUND:      return PLATFORM_ERROR_NOT_FOUND;
+                case ERROR_ALREADY_EXISTS:      return PLATFORM_ERROR_ALREADY_EXISTS;
+                case ERROR_NOT_ENOUGH_MEMORY:   return PLATFORM_ERROR_OUT_OF_MEMORY;
+                case ERROR_BUSY:                return PLATFORM_ERROR_BUSY;
+                case ERROR_IO_PENDING:          return PLATFORM_ERROR_WOULD_BLOCK;
+                case ERROR_BAD_ARGUMENTS:       return PLATFORM_ERROR_INVALID_ARGUMENT;
+                // Add new socket-specific error mappings
+                case WSAECONNREFUSED:          return PLATFORM_ERROR_CONNECTION_REFUSED;
+                case WSAENETUNREACH:           return PLATFORM_ERROR_NETWORK_UNREACHABLE;
+                case WSAENETDOWN:              return PLATFORM_ERROR_NETWORK_DOWN;
                 case WSAETIMEDOUT:             return PLATFORM_ERROR_TIMEOUT;
-                case WSAENOTSOCK:              return PLATFORM_ERROR_INVALID_ARGUMENT;
-                case WSAEINVAL:                return PLATFORM_ERROR_INVALID_ARGUMENT;
-                case WSAEAFNOSUPPORT:          return PLATFORM_ERROR_NOT_SUPPORTED;
-                case WSAECONNRESET:            return PLATFORM_ERROR_SOCKET_CLOSED;
                 case WSAEHOSTUNREACH:          return PLATFORM_ERROR_HOST_NOT_FOUND;
-                case WSAENETUNREACH:           return PLATFORM_ERROR_NOT_FOUND;
                 case WSAEWOULDBLOCK:           return PLATFORM_ERROR_WOULD_BLOCK;
+                case WSAEINPROGRESS:           return PLATFORM_ERROR_WOULD_BLOCK;
+                case WSAESHUTDOWN:             return PLATFORM_ERROR_PEER_SHUTDOWN;
+                case WSAECONNRESET:            return PLATFORM_ERROR_SOCKET_CLOSED;
                 default:                       return PLATFORM_ERROR_UNKNOWN;
             }
+            break;
 
         case PLATFORM_ERROR_DOMAIN_IO:
             switch (error_code) {

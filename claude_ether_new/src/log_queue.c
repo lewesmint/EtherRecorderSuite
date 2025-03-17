@@ -9,6 +9,12 @@
 extern PlatformMutex_T logging_mutex; // Mutex for thread safety
 LogQueue_T global_log_queue; // Define the log queue
 
+
+#define QUEUE_HIGH_WATERMARK 0.99  // 99% full
+#define QUEUE_LOW_WATERMARK 0.90   // 90% full
+
+bool console_logging_suspended = false;
+
 /**
  * @copydoc log_queue_init
  */
@@ -19,12 +25,44 @@ void log_queue_init(LogQueue_T *queue) {
     queue->tail.value = 0;  
 }
 
+static double get_queue_capacity(const LogQueue_T* queue) {
+    uint64_t head = platform_atomic_load_uint64(&queue->head);
+    uint64_t tail = platform_atomic_load_uint64(&queue->tail);
+    
+    uint64_t used;
+    if (head >= tail) {
+        used = head - tail;
+    } else {
+        used = LOG_QUEUE_SIZE - (tail - head);
+    }
+    
+    return (double)used / LOG_QUEUE_SIZE;
+}
+
 /**
  * @copydoc log_queue_push
  */
 bool log_queue_push(LogQueue_T *log_queue, const LogEntry_T *entry) {
     if (!entry || entry->thread_label[0] == '\0') {
         return false;
+    }
+
+    // Check queue capacity
+    double capacity = get_queue_capacity(log_queue);
+    
+    // If we hit high watermark, suspend console logging
+    if (capacity >= QUEUE_HIGH_WATERMARK && !console_logging_suspended) {
+        console_logging_suspended = true;
+        LogEntry_T warning;
+        create_log_entry(&warning, LOG_WARN, "Queue near capacity - suspending console output");
+        log_now(&warning);  // Direct log to avoid recursion
+    }
+    // If we drop below low watermark, resume console logging
+    else if (capacity <= QUEUE_LOW_WATERMARK && console_logging_suspended) {
+        console_logging_suspended = false;
+        LogEntry_T info;
+        create_log_entry(&info, LOG_INFO, "Queue capacity normalized - resuming console output");
+        log_now(&info);  // Direct log to avoid recursion
     }
 
     while (true) {
@@ -44,7 +82,7 @@ bool log_queue_push(LogQueue_T *log_queue, const LogEntry_T *entry) {
             
             if ((head + 1) % LOG_QUEUE_SIZE == tail) {
                 // Queue is still full, need to purge some entries
-                int purge_count = 3;
+                int purge_count = LOG_QUEUE_SIZE/10;
                 LogEntry_T entry_1;
                 char msg[LOG_MSG_BUFFER_SIZE];
                 snprintf(msg, sizeof(msg), "Log queue overflow. Publishing oldest %d log entries immediately", purge_count);
@@ -125,4 +163,8 @@ bool log_queue_pop(LogQueue_T *queue, LogEntry_T *entry) {
         
         // Another thread changed tail, retry the operation
     }
+}
+
+bool is_console_logging_suspended(void) {
+    return console_logging_suspended;
 }

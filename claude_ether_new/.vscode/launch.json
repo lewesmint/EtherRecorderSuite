@@ -3,16 +3,23 @@
     "configurations": [
         {
             "name": "Debug",
-            "type": "cppdbg",
-            "program": "${workspaceFolder}/build/macos-arm64/Debug/ClaudeEther",
-            "MIMode": "lldb",
-            "setupCommands": [
-                {
-                    "description": "Enable signal passthrough",
-                    "text": "process handle -p true -s false -n false SIGINT SIGTERM"
-                }
-            ],
-            "externalConsole": true,
+            // PLATFORM_SWITCH_START
+            // MacOS Configuration
+            //"type": "cppdbg",
+            //"program": "${workspaceFolder}/build/macos-arm64/Debug/ClaudeEther",
+            //"MIMode": "lldb",
+            //"setupCommands": [
+            //    {
+            //        "description": "Enable signal passthrough",
+            //        "text": "process handle -p true -s false -n false SIGINT SIGTERM"
+            //    }
+            //],
+            //"externalConsole": true,
+            // Windows Configuration
+            "type": "cppvsdbg",
+            "program": "${workspaceFolder}/build/windows-arm64/Debug/ClaudeEther.exe",
+            "console": "externalTerminal",
+            // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],
             "stopAtEntry": false,
@@ -22,35 +29,29 @@
         },
         {
             "name": "Release",
-            "type": "cppdbg",
-            "program": "${workspaceFolder}/build/macos-arm64/Release/ClaudeEther",
-            "MIMode": "lldb",
-            "setupCommands": [
-                {
-                    "description": "Enable signal passthrough",
-                    "text": "process handle -p true -s false -n false SIGINT SIGTERM"
-                }
-            ],
-            "externalConsole": true,
+            // PLATFORM_SWITCH_START
+            // MacOS Configuration
+            //"type": "cppdbg",
+            //"program": "${workspaceFolder}/build/macos-arm64/Release/ClaudeEther",
+            //"MIMode": "lldb",
+            //"setupCommands": [
+            //    {
+            //        "description": "Enable signal passthrough",
+            //        "text": "process handle -p true -s false -n false SIGINT SIGTERM"
+            //    }
+            //],
+            //"externalConsole": true,
+            // Windows Configuration
+            "type": "cppvsdbg",
+            "program": "${workspaceFolder}/build/windows-arm64/Release/ClaudeEther.exe",
+            "console": "externalTerminal",
+            // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "preLaunchTask": "Clean and Build All (Release)"
-        },
-        {
-            "name": "C/C++: clang build and debug active file",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${fileDirname}/${fileBasenameNoExtension}",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${fileDirname}",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
-            "preLaunchTask": "C/C++: clang build active file"
         }
     ]
 }

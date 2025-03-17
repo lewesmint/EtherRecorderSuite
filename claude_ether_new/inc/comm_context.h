@@ -19,7 +19,7 @@ typedef struct CommContext {
     PlatformSocketHandle socket;
     PlatformThreadId send_thread_id;
     PlatformThreadId recv_thread_id;
-    PlatformAtomicBool connection_closed;
+    PlatformAtomicBool* connection_closed;  // Changed to pointer
     bool is_relay_enabled;
     bool is_tcp;
     size_t max_message_size;
@@ -34,10 +34,6 @@ typedef struct CommConfig {
     bool is_tcp;                            // Use TCP (true) or UDP (false)
 } CommConfig;
 
-// Function declarations
-void comm_context_init(CommContext* context);
-bool comm_context_is_closed(const CommContext* context);
-void comm_context_close(CommContext* context);
 
 /**
  * @brief Thread function for sending messages
@@ -61,8 +57,7 @@ void* comm_receive_thread(void* arg);
  * @param recv_config Pointer to receive thread configuration
  * @return PlatformErrorCode PLATFORM_ERROR_SUCCESS on success, error code otherwise
  */
-PlatformErrorCode comm_context_create_threads(CommContext* context, 
-                                              ThreadConfig* send_config,
+PlatformErrorCode comm_context_create_threads(ThreadConfig* send_config,
                                               ThreadConfig* recv_config);
 
 /**

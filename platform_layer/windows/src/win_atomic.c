@@ -60,27 +60,37 @@ void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value) {
 
 // Load operations
 int32_t platform_atomic_load_int32(const PlatformAtomicInt32* atomic) {
-    return (int32_t)InterlockedCompareExchange((volatile LONG*)&atomic->value, 0, 0);
+    return (int32_t)atomic->value; // volatile read is sufficient for 32-bit
 }
 
 uint32_t platform_atomic_load_uint32(const PlatformAtomicUInt32* atomic) {
-    return (uint32_t)InterlockedCompareExchange((volatile LONG*)&atomic->value, 0, 0);
+    return (uint32_t)atomic->value; // volatile read is sufficient for 32-bit
 }
 
 int64_t platform_atomic_load_int64(const PlatformAtomicInt64* atomic) {
+#ifdef _WIN64
+    return (int64_t)atomic->value; // volatile read is sufficient on x64
+#else
+    // Use compare-exchange on 32-bit platforms to ensure atomic read
     return (int64_t)InterlockedCompareExchange64((volatile LONGLONG*)&atomic->value, 0, 0);
+#endif
 }
 
 uint64_t platform_atomic_load_uint64(const PlatformAtomicUInt64* atomic) {
+#ifdef _WIN64
+    return (uint64_t)atomic->value; // volatile read is sufficient on x64
+#else
+    // Use compare-exchange on 32-bit platforms to ensure atomic read
     return (uint64_t)InterlockedCompareExchange64((volatile LONGLONG*)&atomic->value, 0, 0);
+#endif
 }
 
 bool platform_atomic_load_bool(const PlatformAtomicBool* atomic) {
-    return (bool)InterlockedCompareExchange((volatile LONG*)&atomic->value, 0, 0);
+    return (bool)atomic->value; // volatile read is sufficient for 8-bit
 }
 
 void* platform_atomic_load_ptr(const PlatformAtomicPtr* atomic) {
-    return InterlockedCompareExchangePointer((volatile PVOID*)&atomic->value, NULL, NULL);
+    return (void*)atomic->value; // volatile read is sufficient for pointer-sized values
 }
 
 // Exchange operations

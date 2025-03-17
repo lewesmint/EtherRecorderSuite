@@ -23,8 +23,8 @@ typedef enum MessageType {
  * @brief Message header structure
  */
 typedef struct {
-    MessageType type;      ///< Message type identifier
-    uint32_t content_size; ///< Size of content in bytes
+    uint32_t type;           ///< Message type identifier
+    size_t content_size;     ///< Size of message content
 } MessageHeader_T;
 
 /**

@@ -114,54 +114,64 @@ void* clientMainThread(void* arg) {
             continue;
         }
 
-        // Initialize communication context
-        CommContext context = {
+        // Create shared atomic bool for connection status
+        PlatformAtomicBool connection_closed;
+        platform_atomic_init_bool(&connection_closed, false);
+
+        // Initialize send context
+        CommContext send_context = {
             .socket = sock,
+            .connection_closed = &connection_closed,
             .is_relay_enabled = config->enable_relay,
             .is_tcp = config->is_tcp,
             .max_message_size = config->max_message_size,
             .timeout_ms = config->timeout_ms
         };
 
+        // Create receive context as a copy of send
+        CommContext recv_context = send_context;
+
         // Create thread configurations
         ThreadConfig send_thread_config = {
             .label = "CLIENT.SEND",
             .func = (ThreadFunc_T)comm_send_thread,
-            .data = &context,
+            .data = &send_context,
             .suppressed = false
         };
 
         ThreadConfig receive_thread_config = {
             .label = "CLIENT.RECEIVE",
             .func = (ThreadFunc_T)comm_receive_thread,
-            .data = &context,
+            .data = &recv_context,
             .suppressed = false
         };
 
         // Create threads using comm_context_create_threads
-        err = comm_context_create_threads(&context,
-                                          &send_thread_config,
+        err = comm_context_create_threads(&send_thread_config,
                                           &receive_thread_config);
         if (err != PLATFORM_ERROR_SUCCESS) {
+            char error_buffer[256];
+            platform_get_error_message_from_code(err, error_buffer, sizeof(error_buffer));
+            logger_log(LOG_ERROR, "Failed to create communication threads: %s", error_buffer);
             platform_socket_close(sock);
             return NULL;
         }
 
         // Monitor connection
-        while (!shutdown_signalled() && !comm_context_is_closed(&context)) {
+        while (!shutdown_signalled() && !platform_atomic_load_bool(&connection_closed)) {
             sleep_ms(100);
         }
 
         // Clean up
-        comm_context_cleanup_threads(&context);
+        comm_context_cleanup_threads(&send_context);
+        comm_context_cleanup_threads(&recv_context);
         platform_socket_close(sock);
 
         if (shutdown_signalled()) {
             break;
         }
 
-        logger_log(LOG_INFO, "Connection lost, attempting to reconnect...");
-        sleep_ms(200);
+        logger_log(LOG_INFO, "Connection lost or reset needed. Attempting to reconnect...");
     }
 
     logger_log(LOG_INFO, "Client manager shutting down");

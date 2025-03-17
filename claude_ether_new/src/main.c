@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
 
     // Main application loop with heartbeat
     while (!shutdown_signalled()) {
-        check_watchdog();
+   //     check_watchdog();
         // Send message to demo thread
         if (!send_demo_text_message()) {
             // logger_log(LOG_ERROR, "Failed to send demo message");

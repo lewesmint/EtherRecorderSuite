@@ -4,6 +4,7 @@
  */
 #include "platform_sockets.h"
 #include "platform_error.h"
+#include "platform_time.h"  // Added for timeout constants
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -156,7 +157,15 @@ PlatformErrorCode platform_socket_connect(
     
     int err = getaddrinfo(address->host, port_str, &hints, &result);
     if (err != 0) {
-        return PLATFORM_ERROR_SOCKET_RESOLVE;
+        switch (WSAGetLastError()) {
+            case WSAHOST_NOT_FOUND:
+            case WSANO_DATA:
+                return PLATFORM_ERROR_HOST_NOT_FOUND;
+            case WSATRY_AGAIN:
+                return PLATFORM_ERROR_SOCKET_RESOLVE;
+            default:
+                return PLATFORM_ERROR_SOCKET_RESOLVE;
+        }
     }
 
     // For non-blocking sockets, just try to connect and return
@@ -166,10 +175,21 @@ PlatformErrorCode platform_socket_connect(
         
         if (connect_result == SOCKET_ERROR) {
             int error = WSAGetLastError();
-            if (error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) {
-                return PLATFORM_ERROR_WOULD_BLOCK;
+            switch (error) {
+                case WSAEWOULDBLOCK:
+                case WSAEINPROGRESS:
+                    return PLATFORM_ERROR_WOULD_BLOCK;
+                case WSAECONNREFUSED:
+                    return PLATFORM_ERROR_CONNECTION_REFUSED;
+                case WSAENETUNREACH:
+                    return PLATFORM_ERROR_NETWORK_UNREACHABLE;
+                case WSAENETDOWN:
+                    return PLATFORM_ERROR_NETWORK_DOWN;
+                case WSAETIMEDOUT:
+                    return PLATFORM_ERROR_TIMEOUT;
+                default:
+                    return PLATFORM_ERROR_SOCKET_CONNECT;
             }
-            return PLATFORM_ERROR_SOCKET_CONNECT;
         }
         return PLATFORM_ERROR_SUCCESS;
     }
@@ -527,4 +547,12 @@ PlatformErrorCode platform_socket_wait_writable(
     }
 
     return PLATFORM_ERROR_SUCCESS;
+}
+
+uint32_t platform_ntohl(uint32_t netlong) {
+    return ntohl(netlong);
+}
+
+uint32_t platform_htonl(uint32_t hostlong) {
+    return htonl(hostlong);
 }

@@ -7,11 +7,24 @@
 #include "platform_error.h"
 #include "platform_threads.h"  // Make sure this includes wait definitions
 #include "thread_registry.h"
+#include "app_config.h"
 #include "logger.h"
 
 #define DEFAULT_THREAD_WAIT_TIMEOUT_MS 5000
 
-static void cleanup_threads(PlatformThreadId* thread_ids, size_t count) {
+typedef struct HexDumpConfig {
+    int bytes_per_row;
+    int bytes_per_col;
+} HexDumpConfig;
+
+static HexDumpConfig g_hex_dump_config = {0};
+
+static void init_hex_dump_config(void) {
+    g_hex_dump_config.bytes_per_row = get_config_int("logger", "hex_dump_bytes_per_row", 32);
+    g_hex_dump_config.bytes_per_col = get_config_int("logger", "hex_dump_bytes_per_col", 4);
+}
+
+static void cleanup_threads(PlatformThreadId* thread_ids, uint32_t count) {
     if (!thread_ids || count == 0) {
         return;
     }
@@ -32,7 +45,7 @@ void comm_context_cleanup_threads(CommContext* context) {
     }
 
     PlatformThreadId threads[2] = {0};
-    size_t thread_count = 0;
+    uint32_t thread_count = 0;
 
     if (context->send_thread_id) {
         threads[thread_count++] = context->send_thread_id;
@@ -49,11 +62,31 @@ void comm_context_cleanup_threads(CommContext* context) {
     }
 }
 
-PlatformErrorCode comm_context_create_threads(CommContext* context,
-                                            ThreadConfig* send_config,
-                                            ThreadConfig* receive_config) {
-    if (!context || !send_config || !receive_config) {
-        return PLATFORM_ERROR_INVALID_ARGUMENT;  // Changed from INVALID_PARAMETER
+PlatformErrorCode comm_context_create_threads(ThreadConfig* send_config,
+                                              ThreadConfig* receive_config) {
+    if (!send_config || !receive_config) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    CommContext* send_context = (CommContext*)send_config->data;
+    CommContext* recv_context = (CommContext*)receive_config->data;
+    
+    if (!send_context || !recv_context) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Initialize hex dump configuration
+    init_hex_dump_config();
+
+    // If relay is enabled, set up the foreign queue labels for receive thread
+    if (recv_context->is_relay_enabled) {
+        const char* client_send = "CLIENT.SEND";
+        const char* server_send = "SERVER.SEND";
+        
+        const char* target_queue = strncmp(send_config->label, server_send, strlen(server_send)) == 0 
+            ? client_send 
+            : server_send;
+        strncpy(recv_context->foreign_queue_label, target_queue, THREAD_LABEL_SIZE);
     }
 
     // Create send thread
@@ -61,33 +94,33 @@ PlatformErrorCode comm_context_create_threads(CommContext* context,
     if (result != THREAD_SUCCESS) {
         return PLATFORM_ERROR_THREAD_CREATE;
     }
-    context->send_thread_id = send_config->thread_id;
+    send_context->send_thread_id = send_config->thread_id;
 
     // Create receive thread
     result = app_thread_create(receive_config);
     if (result != THREAD_SUCCESS) {
-        cleanup_threads(&context->send_thread_id, 1);
-        context->send_thread_id = 0;
+        cleanup_threads(&send_context->send_thread_id, 1);
+        send_context->send_thread_id = 0;
         return PLATFORM_ERROR_THREAD_CREATE;
     }
-    context->recv_thread_id = receive_config->thread_id;
+    recv_context->recv_thread_id = receive_config->thread_id;
 
     return PLATFORM_ERROR_SUCCESS;
 }
 
-bool comm_context_is_closed(const CommContext* context) {
+static bool comm_context_is_closed(const CommContext* context) {
     if (!context) {
         return true;
     }
-    return platform_atomic_load_bool(&context->connection_closed) ;
+    return platform_atomic_load_bool(context->connection_closed) ;
 }
 
-void comm_context_close(CommContext* context) {
+static void comm_context_close(CommContext* context) {
     if (!context) {
         logger_log(LOG_ERROR, "Invalid context");
         return;
     }
-    platform_atomic_store_bool(&context->connection_closed, true);
+    platform_atomic_store_bool(context->connection_closed, true);
 }
 
 
@@ -123,14 +156,13 @@ static PlatformErrorCode handle_send(CommContext* context, char* buffer, size_t 
 static void log_buffered_data(const uint8_t* buffer, size_t length, int batch_bytes) {
     size_t index = 0;
     
-    // Configuration for row display
-    const int bytes_per_row = 16;      // Bytes per row
-    const int bytes_per_col = 4;       // Bytes per column (32-bit words)
-    const int cols_per_row = bytes_per_row / bytes_per_col;
-    const int row_capacity = bytes_per_row;
-    
+    // Use the global configuration
+    const int bytes_per_row = g_hex_dump_config.bytes_per_row;
+    const int bytes_per_col = g_hex_dump_config.bytes_per_col;
+    const int cols_per_row  = bytes_per_row / bytes_per_col;
+   
     // Position within the current row
-    static int row_position = 0;
+    static size_t row_position = 0;
 
     // Character mapping for hex values
     const char hex_chars[] = "0123456789ABCDEF";
@@ -149,17 +181,17 @@ static void log_buffered_data(const uint8_t* buffer, size_t length, int batch_by
         }
         
         // Calculate how many bytes to place in this row
-        int avail = row_capacity - row_position;
-        int to_place = (length - index < (size_t)avail) ? (length - index) : avail;
+        size_t avail = (size_t)(bytes_per_row - row_position);
+        size_t to_place = (length - index < avail) ? (length - index) : avail;
 
         // Place the bytes into the row
-        for (int i = 0; i < to_place; i++) {
-            int pos = row_position + i;           // Position within the row
-            int col = pos / bytes_per_col;        // Column index (32-bit word)
-            int offset = pos % bytes_per_col;     // Offset within the word
+        for (size_t i = 0; i < to_place; i++) {
+            size_t pos = row_position + i;           // Position within the row
+            size_t col = pos / bytes_per_col;        // Column index (32-bit word)
+            size_t offset = pos % bytes_per_col;     // Offset within the word
             
             // Each byte takes 2 hexdigits in the output
-            int dest_index = col * (bytes_per_col * 2 + 1) + offset * 2;
+            size_t dest_index = col * (bytes_per_col * 2 + 1) + offset * 2;
             
             uint8_t byte = buffer[index + i];
             row[dest_index] = hex_chars[byte >> 4];       // High nibble
@@ -168,7 +200,7 @@ static void log_buffered_data(const uint8_t* buffer, size_t length, int batch_by
 
         // Update the row position
         row_position += to_place;
-        if (row_position >= row_capacity) {
+        if (row_position >= bytes_per_row) {
             row_position = 0;  // Start a fresh row next time
         }
         index += to_place;
@@ -185,28 +217,35 @@ static bool process_relay_data(CommContext* context, const char* buffer, size_t 
         return true;  // Not an error, just no relay needed
     }
 
-    // Try to get the foreign queue by label
     MessageQueue_T* foreign_queue = get_queue_by_label(context->foreign_queue_label);
     if (!foreign_queue) {
         return true;  // Queue not available yet, ignore
     }
 
-    // Create message structure
-    Message_T message = {0};
-    if (bytes_received > sizeof(message.content)) {
-        logger_log(LOG_ERROR, "Message too large for relay buffer");
-        return false;
-    }
-    
-    // Copy the data into the message structure
-    memcpy(message.content, buffer, bytes_received);
-    message.header.content_size = bytes_received;
-    message.header.type = MSG_TYPE_RELAY;
+    const size_t max_content_size = sizeof(((Message_T*)0)->content);
+    const char* current_pos = buffer;
+    size_t remaining = bytes_received;
 
-    // Push to foreign queue for relay
-    if (!message_queue_push(foreign_queue, &message, DEFAULT_THREAD_WAIT_TIMEOUT_MS)) {
-        logger_log(LOG_ERROR, "Failed to relay message to foreign queue");
-        return false;
+    int chunk_count = 0;
+    while (remaining > 0) {
+        if (chunk_count >= 1) {
+            logger_log(LOG_ERROR, "Chunks in relay data %d", chunk_count);
+            return false;
+        }
+        Message_T message = {0};
+        message.header.type = MSG_TYPE_RELAY;
+        message.header.content_size = (remaining > max_content_size) ? max_content_size : remaining;
+        
+        memcpy(message.content, current_pos, message.header.content_size);
+        
+        if (!message_queue_push(foreign_queue, &message, DEFAULT_THREAD_WAIT_TIMEOUT_MS)) {
+            logger_log(LOG_ERROR, "Failed to relay message to foreign queue");
+            return false;
+        }
+
+        current_pos += message.header.content_size;
+        remaining -= message.header.content_size;
+        chunk_count++;
     }
 
     return true;
@@ -217,10 +256,19 @@ static bool handle_receive(CommContext* context, char* buffer, size_t buffer_siz
         return false;
     }
 
+    static int timeout_count = 0;
+
     // Check if socket is readable
     PlatformErrorCode result = platform_socket_wait_readable(context->socket, context->timeout_ms);
     if (result != PLATFORM_ERROR_SUCCESS) {
         if (result == PLATFORM_ERROR_TIMEOUT) {
+            timeout_count++;
+            if (timeout_count >= 10) {
+                timeout_count = 0;
+                logger_log(LOG_ERROR, "Socket read timed out 10 times in a row");
+                return false;
+            }
+            logger_log(LOG_INFO, "Socket read timed out");
             return true;  // Timeout is not an error condition
         }
         // Any other error should close the connection
@@ -243,79 +291,81 @@ static bool handle_receive(CommContext* context, char* buffer, size_t buffer_siz
 
     // Handle relay if enabled
     if (!process_relay_data(context, buffer, bytes_received)) {
-        return false;
+        // a false return means an issue with the relay, not the receive
+        // and it will have been reported on already
+        ;
     }
 
     return true;
 }
 
-static int32_t populate_buffer(char* buffer, size_t buffer_size) {
-    (void)buffer;
-    (void)buffer_size;
-    return 0;
-    // if (!buffer || buffer_size == 0) {
-    //     return 0;
-    // }
+// static int32_t populate_buffer(char* buffer, size_t buffer_size) {
+//     (void)buffer;
+//     (void)buffer_size;
+//     return 0;
+//     // if (!buffer || buffer_size == 0) {
+//     //     return 0;
+//     // }
 
-    // // Populate the buffer with some data
-    // for (size_t i = 0; i < buffer_size; i++) {
-    //     buffer[i] = (char)i;
-    // }
+//     // // Populate the buffer with some data
+//     // for (size_t i = 0; i < buffer_size; i++) {
+//     //     buffer[i] = (char)i;
+//     // }
 
-    // return (int32_t)buffer_size;
-}
+//     // return (int32_t)buffer_size;
+// }
 
-void* comm_send_thread(void* arg) {
-    ThreadConfig* thread_config = (ThreadConfig*)arg;
-    CommContext* context = (CommContext*)thread_config->data;
-    if (!context) {
-        return NULL;
-    }
+// void* comm_send_thread(void* arg) {
+//     ThreadConfig* thread_config = (ThreadConfig*)arg;
+//     CommContext* context = (CommContext*)thread_config->data;
+//     if (!context) {
+//         return NULL;
+//     }
 
-    char buffer[2048];
-    bool send_error = false;
+//     char buffer[2048];
+//     bool send_error = false;
 
-    logger_log(LOG_INFO, "Send thread started");
+//     logger_log(LOG_INFO, "Send thread started");
 
-    while (!comm_context_is_closed(context) && !shutdown_signalled() && !send_error) {
-        size_t bytes_sent = 0;
-        int32_t bytes_to_send = populate_buffer(buffer, sizeof(buffer));
+//     while (!comm_context_is_closed(context) && !shutdown_signalled() && !send_error) {
+//         size_t bytes_sent = 0;
+//         int32_t bytes_to_send = populate_buffer(buffer, sizeof(buffer));
         
-        // Validate bytes_to_send
-        if (bytes_to_send < 0 || (size_t)bytes_to_send > sizeof(buffer)) {
-            logger_log(LOG_ERROR, "Invalid bytes_to_send: %d, max: %zu", bytes_to_send, sizeof(buffer));
-            break;
-        }
+//         // Validate bytes_to_send
+//         if (bytes_to_send < 0 || (size_t)bytes_to_send > sizeof(buffer)) {
+//             logger_log(LOG_ERROR, "Invalid bytes_to_send: %d, max: %zu", bytes_to_send, sizeof(buffer));
+//             break;
+//         }
 
-        // Send all data
-        size_t total_sent = 0;
-        while (total_sent < (size_t)bytes_to_send && !send_error) {
-            PlatformErrorCode result = handle_send(context, 
-                                                 buffer + total_sent, 
-                                                 (size_t)bytes_to_send - total_sent, 
-                                                 &bytes_sent);
-            if (result != PLATFORM_ERROR_SUCCESS) {
-                if (result == PLATFORM_ERROR_TIMEOUT) {
-                    continue;  // Try again on timeout
-                }
-                send_error = true;
-                break;
-            }
-            total_sent += bytes_sent;
-        }
+//         // Send all data
+//         size_t total_sent = 0;
+//         while (total_sent < (size_t)bytes_to_send && !send_error) {
+//             PlatformErrorCode result = handle_send(context, 
+//                                                  buffer + total_sent, 
+//                                                  (size_t)bytes_to_send - total_sent, 
+//                                                  &bytes_sent);
+//             if (result != PLATFORM_ERROR_SUCCESS) {
+//                 if (result == PLATFORM_ERROR_TIMEOUT) {
+//                     continue;  // Try again on timeout
+//                 }
+//                 send_error = true;
+//                 break;
+//             }
+//             total_sent += bytes_sent;
+//         }
 
-        if (!send_error) {
-            sleep_ms(10);
-        }
-    }
+//         if (!send_error) {
+//             sleep_ms(10);
+//         }
+//     }
 
-    if (send_error) {
-        logger_log(LOG_ERROR, "Send error occurred");
-    }
-    printf("Send thread Out of here\n");
-    fflush(stdout);
-    return NULL;
-}
+//     if (send_error) {
+//         logger_log(LOG_ERROR, "Send error occurred");
+//     }
+//     printf("Send thread Out of here\n");
+//     fflush(stdout);
+//     return NULL;
+// }
 
 void* comm_receive_thread(void* arg) {
     ThreadConfig* thread_config = (ThreadConfig*)arg;
@@ -326,7 +376,7 @@ void* comm_receive_thread(void* arg) {
 
     logger_log(LOG_INFO, "Receive thread started");
 
-    char buffer[2048];
+    char buffer[4096];
 
     while (!comm_context_is_closed(context) && !shutdown_signalled()) {
         if (!handle_receive(context, buffer, sizeof(buffer))) {
@@ -337,5 +387,88 @@ void* comm_receive_thread(void* arg) {
     logger_log(LOG_INFO, "Receive thread exiting");
     printf("Receive thread Out of here\n");
     fflush(stdout);
+    return NULL;
+}
+
+// ThreadResult comms_thread_message_processor(ThreadConfig* config, Message_T* message) {
+//     CommContext* context = (CommContext*)config->data;
+//     if (!context || !message) {
+//         return THREAD_ERROR;
+//     }
+    
+//     // Check if this is a relay message
+//     bool is_relay = (message->header.type == MSG_TYPE_RELAY);
+    
+//     if (!is_socket_writable(context->socket, context->timeout_ms)) {
+//         return THREAD_ERROR;
+//     }
+
+//     // For relay messages, additional logging may be needed
+//     if (is_relay && context->is_relay_enabled) {
+//         logger_log(LOG_DEBUG, "Processing relay message from thread %s", 
+//                   context->foreign_queue_label);
+//     }
+
+//     size_t bytes_sent = 0;
+//     PlatformErrorCode err = platform_socket_send(
+//         context->socket,
+//         message->content,
+//         message->header.content_size,
+//         &bytes_sent
+//     );
+
+//     return (err == PLATFORM_ERROR_SUCCESS) ? THREAD_SUCCESS : THREAD_ERROR;
+// }
+
+void* comm_send_thread(void* arg) {
+    ThreadConfig* thread_config = (ThreadConfig*)arg;
+    CommContext* context = (CommContext*)thread_config->data;
+    if (!context) {
+        return NULL;
+    }
+
+    logger_log(LOG_INFO, "Send thread started");
+
+    Message_T message;
+    while (!comm_context_is_closed(context) && !shutdown_signalled()) {
+        // Simple non-blocking message pop
+        ThreadRegistryError queue_result = pop_message(thread_config->label, &message, 0);
+        
+        if (queue_result == THREAD_REG_QUEUE_EMPTY) {
+            sleep_ms(10);
+            continue;
+        }
+        
+        if (queue_result != THREAD_REG_SUCCESS) {
+            logger_log(LOG_ERROR, "Queue error in send thread");
+            break;
+        }
+
+        // Send complete message with retry on partial sends
+        size_t total_sent = 0;
+        while (total_sent < message.header.content_size) {
+            size_t bytes_sent = 0;
+            PlatformErrorCode result = platform_socket_send(
+                context->socket,
+                message.content + total_sent,
+                message.header.content_size - total_sent,
+                &bytes_sent
+            );
+
+            if (result == PLATFORM_ERROR_SUCCESS) {
+                total_sent += bytes_sent;
+            }
+            else if (result == PLATFORM_ERROR_TIMEOUT) {
+                continue;  // Retry on timeout
+            }
+            else {
+                logger_log(LOG_ERROR, "Send error occurred");
+                comm_context_close(context);
+                return NULL;
+            }
+        }
+    }
+
+    logger_log(LOG_INFO, "Send thread shutting down");
     return NULL;
 }

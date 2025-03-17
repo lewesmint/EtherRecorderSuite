@@ -314,12 +314,12 @@ void start_threads(void) {
     
     // Define all threads to start
     ThreadStartInfo threads_to_start[] = {
-        { get_logger_thread(), true },           // Logger is essential
-        // { get_watchdog_thread(), true },         // Watchdog is essential
-        { get_server_thread(), false },          // Server thread is not essential
-        { get_client_thread(), false },          // Add client thread
+        { get_logger_thread(), true },             // Logger is essential
+        // { get_watchdog_thread(), true },        // Watchdog is essential
+        { get_server_thread(), false },            // Server thread is not essential
+        { get_client_thread(), false },            // Add client thread
         { get_command_interface_thread(), false }, // Command interface is not essential
-        { get_demo_heartbeat_thread(), false }   // Demo thread is not essential
+        { get_demo_heartbeat_thread(), false }     // Demo thread is not essential
     };
     
     // Start each thread
@@ -346,85 +346,87 @@ void start_threads(void) {
     }
 }
 
-static void* thread_wrapper(ThreadConfig* thread_args) {
-    if (!thread_args) {
+static void* thread_wrapper(void* arg) {
+    if (!arg) {
         return (void*)THREAD_ERROR_INIT_FAILED;
     }
 
+    // Make a local copy of the thread config on the stack
+    ThreadConfig thread_args = *(ThreadConfig*)arg;
     ThreadResult run_result = THREAD_SUCCESS;
 
     // Set thread-specific data
-    set_thread_label(thread_args->label);
+    set_thread_label(thread_args.label);
 
     // Register the thread
-    ThreadRegistryError reg_result = thread_registry_register(thread_args, true);
+    ThreadRegistryError reg_result = thread_registry_register(&thread_args, true);
     if (reg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to register thread '%s': %s", 
-            thread_args->label, 
-                    app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
+            thread_args.label, 
+            app_error_get_message(THREAD_REGISTRY_DOMAIN, reg_result));
         
         return (void*)(THREAD_ERROR_REGISTRATION_FAILED);
     }
     
     // Update thread state to running
-    thread_registry_update_state(thread_args->label, THREAD_STATE_RUNNING);
+    thread_registry_update_state(thread_args.label, THREAD_STATE_RUNNING);
     
     // Initialize message queue for this thread
-    ThreadRegistryError queue_result = init_queue(thread_args->label);
+    ThreadRegistryError queue_result = init_queue(thread_args.label);
     if (queue_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to initialize message queue for thread '%s'", 
-                  thread_args->label);
-        thread_registry_update_state(thread_args->label, 
+                  thread_args.label);
+        thread_registry_update_state(thread_args.label, 
                                      THREAD_STATE_FAILED);
         return (void*)(THREAD_ERROR_INIT_FAILED);
     }
 
     // Wait for logger before any initialization
-    ThreadResult wait_result = wait_for_logger(thread_args);
+    ThreadResult wait_result = wait_for_logger(&thread_args);
     if (wait_result != THREAD_SUCCESS) {
-        thread_registry_update_state(thread_args->label, 
+        thread_registry_update_state(thread_args.label, 
                                    THREAD_STATE_FAILED);
         return (void*)(uintptr_t)(wait_result);
     }
     
     // Call init function if exists
-    if (thread_args->init_func) {
-        ThreadResult init_result = (ThreadResult)(uintptr_t)thread_args->init_func(thread_args);
+    if (thread_args.init_func) {
+        ThreadResult init_result = (ThreadResult)(uintptr_t)thread_args.init_func(&thread_args);
         if (init_result != THREAD_SUCCESS) {
             logger_log(LOG_ERROR, "Thread '%s' initialization failed with result %d", 
-                      thread_args->label, init_result);
-            thread_registry_update_state(thread_args->label, 
+                      thread_args.label, init_result);
+            thread_registry_update_state(thread_args.label, 
                                       THREAD_STATE_FAILED);
             return (void*)(uintptr_t)init_result;
         }
     }
  
     // Execute the main thread function
-    if (thread_args->func) {
-        run_result = (ThreadResult)(uintptr_t)thread_args->func(thread_args);
+    if (thread_args.func) {
+        run_result = (ThreadResult)(uintptr_t)thread_args.func(&thread_args);
         if (run_result != THREAD_SUCCESS) {
             logger_log(LOG_ERROR, "Thread '%s' run failed with result %d", 
-                      thread_args->label, run_result);
+                      thread_args.label, run_result);
         }
     }
     
     // Call exit function if exists
-    if (thread_args->exit_func) {
-        ThreadResult exit_result = (ThreadResult)(uintptr_t)thread_args->exit_func(thread_args);
+    if (thread_args.exit_func) {
+        ThreadResult exit_result = (ThreadResult)(uintptr_t)thread_args.exit_func(&thread_args);
         if (exit_result != THREAD_SUCCESS) {
             logger_log(LOG_ERROR, "Thread '%s' exit function failed with result %d",
-                thread_args->label, exit_result);
+                thread_args.label, exit_result);
         }
     }
     
     // Update thread state to terminated and deregister
-    thread_registry_update_state(thread_args->label, THREAD_STATE_TERMINATED);
+    thread_registry_update_state(thread_args.label, THREAD_STATE_TERMINATED);
     
     // Deregister the thread
-    ThreadRegistryError dereg_result = thread_registry_deregister(thread_args->label);
+    ThreadRegistryError dereg_result = thread_registry_deregister(thread_args.label);
     if (dereg_result != THREAD_REG_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to deregister thread '%s': %s",
-            thread_args->label,
+            thread_args.label,
             app_error_get_message(THREAD_REGISTRY_DOMAIN, dereg_result));
     }
     

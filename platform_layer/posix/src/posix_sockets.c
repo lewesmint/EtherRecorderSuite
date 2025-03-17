@@ -634,3 +634,11 @@ PlatformErrorCode platform_socket_wait_writable(
     
     return PLATFORM_ERROR_SUCCESS;
 }
+
+uint32_t platform_ntohl(uint32_t netlong) {
+    return ntohl(netlong);
+}
+
+uint32_t platform_htonl(uint32_t hostlong) {
+    return htonl(hostlong);
+}

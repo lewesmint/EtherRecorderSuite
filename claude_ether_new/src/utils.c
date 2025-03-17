@@ -82,6 +82,11 @@ void stream_print(FILE* stream, const char *format, ...) {
     va_start(args, format);
     int n = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
+    if (stream == NULL) {
+        platform_write(stderr, "Error: NULL stream passed to stream_print\n", 39);
+        return;
+    }
+    
     if (n > 0) {
         platform_write(stream, buffer, (size_t)n);
     }

@@ -227,6 +227,10 @@ PlatformErrorCode platform_socket_wait_writable(
     PlatformSocketHandle handle,
     uint32_t timeout_ms);
 
+uint32_t platform_ntohl(uint32_t netlong);
+
+uint32_t platform_htonl(uint32_t hostlong);
+
 #ifdef __cplusplus
 }
 #endif

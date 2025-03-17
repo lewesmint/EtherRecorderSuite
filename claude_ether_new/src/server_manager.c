@@ -69,37 +69,48 @@ ThreadConfig* get_server_thread(void) {
     return &server_thread;
 }
 
-static PlatformErrorCode handle_connection(CommContext* context) {
-    // Create thread configurations that will live for the duration of this function
+static PlatformErrorCode handle_connection(CommContext* base_context) {
+    // Create atomic bool on the stack - perfectly fine as it lives for the duration of the function
+    PlatformAtomicBool connection_closed;
+    platform_atomic_init_bool(&connection_closed, false);
+
+    CommContext send_context = *base_context;  // Copy base settings
+    CommContext recv_context = *base_context;  // Copy base settings
+    
+    // Set the atomic in just the duplicated contexts
+    send_context.connection_closed = &connection_closed;
+    recv_context.connection_closed = &connection_closed;
+
+    // Create thread configurations
     ThreadConfig send_thread_config = {
         .label = "SERVER.SEND",
         .func = (ThreadFunc_T)comm_send_thread,
-        .data = context,
+        .data = &send_context,    // Point to send context
         .suppressed = false
     };
 
     ThreadConfig receive_thread_config = {
         .label = "SERVER.RECEIVE",
         .func = (ThreadFunc_T)comm_receive_thread,
-        .data = context,
+        .data = &recv_context,    // Point to receive context
         .suppressed = false
     };
 
     // Create threads using comm_context_create_threads
-    PlatformErrorCode err = comm_context_create_threads(context, 
-                                                      &send_thread_config,
-                                                      &receive_thread_config);
+    PlatformErrorCode err = comm_context_create_threads(&send_thread_config,
+                                                        &receive_thread_config);
     if (err != PLATFORM_ERROR_SUCCESS) {
         return err;
     }
 
-    // Monitor connection
-    while (!shutdown_signalled() && !comm_context_is_closed(context)) {
+    // Monitor connection - check either context since they share the same socket
+    while (!shutdown_signalled() && !platform_atomic_load_bool(&connection_closed)) {
         sleep_ms(100);
     }
 
-    // Clean up using centralized function
-    comm_context_cleanup_threads(context);
+    comm_context_cleanup_threads(&send_context);
+    comm_context_cleanup_threads(&recv_context);
+    
     return PLATFORM_ERROR_SUCCESS;
 }
 
@@ -211,7 +222,7 @@ void* serverListenerThread(void* arg) {
 
             CommContext context = {
                 .socket = client,
-                .is_relay_enabled = true,
+                .is_relay_enabled = config->enable_relay,
                 .is_tcp = config->is_tcp,
                 .max_message_size = 1024,
                 .timeout_ms = 1000

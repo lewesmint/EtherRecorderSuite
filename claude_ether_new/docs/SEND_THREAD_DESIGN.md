@@ -23,7 +23,6 @@ ThreadConfig* create_send_thread_config(
     if (!config) return NULL;
 
     config->label = strdup(label);
-    config->msg_processor = send_message_processor;
     config->data = context;
     config->group_id = master_handle;  // Set group ID to master's handle
     
