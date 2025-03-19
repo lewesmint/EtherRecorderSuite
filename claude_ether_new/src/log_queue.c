@@ -11,7 +11,7 @@ LogQueue_T global_log_queue; // Define the log queue
 
 
 #define QUEUE_HIGH_WATERMARK 0.99  // 99% full
-#define QUEUE_LOW_WATERMARK 0.90   // 90% full
+#define QUEUE_LOW_WATERMARK 0.60   // 60% full
 
 bool console_logging_suspended = false;
 
@@ -56,6 +56,10 @@ bool log_queue_push(LogQueue_T *log_queue, const LogEntry_T *entry) {
         LogEntry_T warning;
         create_log_entry(&warning, LOG_WARN, "Queue near capacity - suspending console output");
         log_now(&warning);  // Direct log to avoid recursion
+        fflush(stdout);
+        fflush(stderr);
+        console_logging_suspended = true;
+        sleep_ms(100);
     }
     // If we drop below low watermark, resume console logging
     else if (capacity <= QUEUE_LOW_WATERMARK && console_logging_suspended) {
