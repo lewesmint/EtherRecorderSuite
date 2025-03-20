@@ -15,10 +15,11 @@
 /**
  * @brief Structure representing a log queue.
  */
-typedef struct LogQueue_T {
-    PlatformAtomicUInt64 head;
-    PlatformAtomicUInt64 tail;
+typedef struct {
     LogEntry_T entries[LOG_QUEUE_SIZE];
+    PlatformAtomicUInt32 head;
+    PlatformAtomicUInt32 tail;
+    uint32_t sequences[LOG_QUEUE_SIZE];  // Sequence numbers instead of bool
 } LogQueue_T;
 
 extern LogQueue_T global_log_queue; // Declare the log queue

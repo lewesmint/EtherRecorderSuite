@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <math.h>
+#include <errno.h>
 
 #include "platform_time.h"
 #include "log_queue.h"
@@ -897,11 +898,11 @@ static void* logger_thread_function(void* arg) {
 
     // No more condition/flag needed - thread registry state is enough
     LogEntry_T entry;
-
+ 
     while (!shutdown_signalled()) {
         while (log_queue_pop(&global_log_queue, &entry)) {
             if (*entry.thread_label == '\0')
-                printf("Logger thread processing log from: NULL\n");
+               printf("Logger thread processing log from: NULL\n");
             log_now(&entry);
         }
         // sleep_ms(1);

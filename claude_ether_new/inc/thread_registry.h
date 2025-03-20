@@ -10,8 +10,7 @@
 #include "platform_mutex.h"
 #include "platform_sync.h"
 #include "platform_atomic.h"
-
-#include "message_types.h"
+#include "message_queue_types.h"
 #include "app_thread.h"
 #include "app_error.h"  // Include for ThreadRegistryError
 

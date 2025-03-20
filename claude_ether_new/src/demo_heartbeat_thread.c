@@ -1,7 +1,9 @@
 #include "demo_heartbeat_thread.h"
-#include "logger.h"
+
+
 #include "platform_threads.h"
 #include "shutdown_handler.h"
+#include "logger.h"
 #include "message_types.h"
 #include "thread_registry.h"
 #include "thread_status_errors.h"

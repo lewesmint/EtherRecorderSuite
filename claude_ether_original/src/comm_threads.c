@@ -66,7 +66,7 @@ static bool process_received_data(CommContext* context, const uint8_t* buffer, s
     
 
     if (!buffer || bytes == 0) {
-        logger_log(LOG_ERROR, "Invalid buffer or no data received");
+        logger_log(LOG_ERRmOR, "Invalid buffer or no data received");
         return false;
     }
 

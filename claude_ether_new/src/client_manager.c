@@ -162,6 +162,12 @@ void* clientMainThread(void* arg) {
             sleep_ms(100);
         }
 
+        platform_atomic_store_bool(&connection_closed, true);
+        sleep_ms(50);
+
+        thread_registry_wait_list(&send_thread_config.thread_id, 1, 1000);
+        thread_registry_wait_list(&receive_thread_config.thread_id, 1, 1000);
+
         // Clean up
         comm_context_cleanup_threads(&send_context);
         comm_context_cleanup_threads(&recv_context);

@@ -124,7 +124,7 @@ static void comm_context_close(CommContext* context) {
 }
 
 
-static PlatformErrorCode handle_send(CommContext* context, char* buffer, size_t buffer_size, size_t* bytes_sent) {
+PlatformErrorCode handle_send(CommContext* context, char* buffer, size_t buffer_size, size_t* bytes_sent) {
 
     if (!context || !buffer || buffer_size == 0) {
         return PLATFORM_ERROR_INVALID_ARGUMENT;
@@ -157,9 +157,9 @@ static void log_buffered_data(const uint8_t* buffer, size_t length, int batch_by
     size_t index = 0;
     
     // Use the global configuration
-    const int bytes_per_row = g_hex_dump_config.bytes_per_row;
-    const int bytes_per_col = g_hex_dump_config.bytes_per_col;
-    const int cols_per_row  = bytes_per_row / bytes_per_col;
+    const uint32_t bytes_per_row = g_hex_dump_config.bytes_per_row;
+    const uint32_t bytes_per_col = g_hex_dump_config.bytes_per_col;
+    const uint32_t cols_per_row  = bytes_per_row / bytes_per_col;
    
     // Position within the current row
     static size_t row_position = 0;
@@ -172,9 +172,9 @@ static void log_buffered_data(const uint8_t* buffer, size_t length, int batch_by
     while (index < length) {
         // Initialize the row with placeholder dots
         char row[256] = {0};
-        for (int i = 0; i < cols_per_row; i++) {
-            int base = i * (bytes_per_col * 2 + 1); // 2 chars per byte + 1 space
-            for (int j = 0; j < bytes_per_col * 2; j++) {
+        for (uint32_t i = 0; i < cols_per_row; i++) {
+            uint32_t base = i * (bytes_per_col * 2 + 1); // 2 chars per byte + 1 space
+            for (uint32_t j = 0; j < bytes_per_col * 2; j++) {
                 row[base + j] = '.';
             }
             row[base + bytes_per_col * 2] = ' ';  // Space after each column
