@@ -1,8 +1,12 @@
 #include "file_reader.h"
+
+#include <string.h>
+
 #include "platform_threads.h"
 #include "platform_string.h"
 #include "platform_error.h"
 #include "platform_file.h"
+
 #include "message_types.h"
 #include "logger.h"
 #include "app_config.h"
@@ -10,7 +14,6 @@
 #include "shutdown_handler.h"
 #include "thread_status_errors.h"
 #include "utils.h"
-
 
 typedef struct PlatformFile* FileHandle;
 
@@ -23,7 +26,7 @@ static PlatformFileHandle open_file(const char* filepath, PlatformErrorCode* err
     );
 }
 
-static bool read_file_chunk(FileHandle handle, void* buffer, size_t size,
+bool read_file_chunk(FileHandle handle, void* buffer, size_t size,
     size_t* bytes_read, const char** error_msg) {
     FILE* file = (FILE*)handle;
     *bytes_read = fread(buffer, 1, size, file);
@@ -34,13 +37,13 @@ static bool read_file_chunk(FileHandle handle, void* buffer, size_t size,
     return true;
 }
 
-static void close_file(FileHandle handle) {
+void close_file(FileHandle handle) {
     if (handle) {
         fclose((FILE*)handle);
     }
 }
 
-static bool get_file_size(FileHandle handle, size_t* size) {
+bool get_file_size(FileHandle handle, size_t* size) {
     FILE* file = (FILE*)handle;
     if (fseek(file, 0, SEEK_END) != 0) {
         return false;
@@ -90,7 +93,7 @@ ThreadConfig* get_file_reader_thread(const char* filepath, const char* target_th
 }
 
 FileReadMode string_to_read_mode(const char* file_read_mode) {
-    for (int i = 0; i < sizeof(FILE_READ_MODE_STRINGS) / sizeof(FILE_READ_MODE_STRINGS[0]); i++) {
+    for (size_t i = 0; i < sizeof(FILE_READ_MODE_STRINGS) / sizeof(FILE_READ_MODE_STRINGS[0]); i++) {
         if (strcmp_nocase(file_read_mode, FILE_READ_MODE_STRINGS[i]) == 0) {
             return (FileReadMode)i;
         }
@@ -151,7 +154,7 @@ void* file_reader_thread_function(void* arg) {
         return (void*)THREAD_ERROR_FILE_OPEN;
     }
 
-    uint64_t file_size;
+    size_t file_size;
     error_code = platform_file_get_size(file, &file_size);
     if (error_code != PLATFORM_ERROR_SUCCESS) {
         char error_buffer[256];

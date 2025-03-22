@@ -5,14 +5,14 @@
             "name": "Debug",
             // PLATFORM_SWITCH_START
             // MacOS Configuration
-            //"type": "cppdbg",
-            //"program": "${workspaceFolder}/build/macos-arm64/Debug/PlatformLayer_test",
-            //"MIMode": "lldb",
-            //"externalConsole": false,
+            "type": "cppdbg",
+            "program": "${workspaceFolder}/build/macos-arm64/Debug/PlatformLayer_test",
+            "MIMode": "lldb",
+            "externalConsole": false,
             // Windows Configuration
-            "type": "cppvsdbg",
-            "program": "${workspaceFolder}/build/windows-arm64/Debug/PlatformLayer_test.exe",
-            "console": "externalTerminal",
+            //"type": "cppvsdbg",
+            //"program": "${workspaceFolder}/build/windows-arm64/Debug/PlatformLayer_test.exe",
+            //"console": "externalTerminal",
             // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],
@@ -25,14 +25,14 @@
             "name": "Release",
             // PLATFORM_SWITCH_START
             // MacOS Configuration
-            //"type": "cppdbg",
-            //"program": "${workspaceFolder}/build/macos-arm64/Release/PlatformLayer_test",
-            //"MIMode": "lldb",
-            //"externalConsole": false,
+            "type": "cppdbg",
+            "program": "${workspaceFolder}/build/macos-arm64/Release/PlatformLayer_test",
+            "MIMode": "lldb",
+            "externalConsole": false,
             // Windows Configuration
-            "type": "cppvsdbg",
-            "program": "${workspaceFolder}/build/windows-arm64/Release/PlatformLayer_test.exe",
-            "console": "externalTerminal",
+            //"type": "cppvsdbg",
+            //"program": "${workspaceFolder}/build/windows-arm64/Release/PlatformLayer_test.exe",
+            //"console": "externalTerminal",
             // PLATFORM_SWITCH_END
             "request": "launch",
             "args": [],

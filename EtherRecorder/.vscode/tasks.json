@@ -5,7 +5,7 @@
             "label": "Clean and Build All (Debug)",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "Clean All (Debug)",
+                "Clean All",
                 "Configure EtherRecorder (Debug)",
                 "Build EtherRecorder (Debug)"
             ],
@@ -15,7 +15,17 @@
             }
         },
         {
-            "label": "Clean All (Debug)",
+            "label": "Clean and Build All (Release)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Clean All",
+                "Configure EtherRecorder (Release)",
+                "Build EtherRecorder (Release)"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Clean All",
             "type": "shell",
             "windows": {
                 "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\""
@@ -28,44 +38,89 @@
             "label": "Configure EtherRecorder (Debug)",
             "type": "shell",
             "command": "cmake",
-            "args": [
-                "--preset",
-                "windows-arm64-debug"
-            ],
+            "windows": {
+                "args": ["--preset", "windows-arm64-debug"]
+            },
+            "osx": {
+                "args": ["--preset", "macos-arm64-debug"]
+            },
             "options": {
                 "cwd": "${workspaceFolder}"
-            }
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
+        },
+        {
+            "label": "Configure EtherRecorder (Release)",
+            "type": "shell",
+            "command": "cmake",
+            "windows": {
+                "args": ["--preset", "windows-arm64-release"]
+            },
+            "osx": {
+                "args": ["--preset", "macos-arm64-release"]
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
         },
         {
             "label": "Build EtherRecorder (Debug)",
             "type": "shell",
             "command": "cmake",
-            "args": [
-                "--build",
-                "--preset",
-                "windows-arm64-debug",
-                "--target",
-                "EtherRecorder"
-            ],
+            "windows": {
+                "args": [
+                    "--build",
+                    "--preset",
+                    "windows-arm64-debug",
+                    "--target",
+                    "EtherRecorder",
+                    "--config",
+                    "debug"
+                ]
+            },
+            "osx": {
+                "args": [
+                    "--build",
+                    "--preset",
+                    "macos-arm64-debug",
+                    "--target",
+                    "EtherRecorder"
+                ]
+            },
             "options": {
                 "cwd": "${workspaceFolder}"
             },
-            "problemMatcher": [
-                "$msCompile",
-                "$gcc"
-            ]
+            "problemMatcher": ["$msCompile", "$gcc"]
         },
         {
-            "type": "cmake",
-            "label": "CMake: clean rebuild",
-            "command": "cleanRebuild",
-            "targets": [
-                "all"
-            ],
-            "preset": "${command:cmake.activeBuildPresetName}",
-            "group": "build",
-            "problemMatcher": [],
-            "detail": "CMake template clean rebuild task"
+            "label": "Build EtherRecorder (Release)",
+            "type": "shell",
+            "command": "cmake",
+            "windows": {
+                "args": [
+                    "--build",
+                    "--preset",
+                    "windows-arm64-release",
+                    "--target",
+                    "EtherRecorder",
+                    "--config",
+                    "release"
+                ]
+            },
+            "osx": {
+                "args": [
+                    "--build",
+                    "--preset",
+                    "macos-arm64-release",
+                    "--target",
+                    "EtherRecorder"
+                ]
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
         }
     ]
 }

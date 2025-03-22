@@ -1,5 +1,6 @@
 #include "log_queue.h"
 #include <stdio.h>
+#include <string.h>  // Add this include for memset
 #include <stdbool.h>
 
 #include "platform_random.h"

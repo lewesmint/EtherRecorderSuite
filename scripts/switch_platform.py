@@ -1,4 +1,4 @@
-import glob, platform, re
+import glob, platform, re, os
 # This script switches platform-specific configurations in VSCode JSON files
 
 # Determine current platform
@@ -60,10 +60,20 @@ def process_file(file_path):
     with open(file_path, 'w') as f:
         f.writelines(result)
 
+# Start from the parent directory of the script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+
 # Find and process relevant VSCode config files
 config_patterns = ["settings.json", "c_cpp_properties.json", "launch.json"]
-vscode_files = [f for f in glob.glob("**/.vscode/*.json", recursive=True) 
-               if any(p in f for p in config_patterns)]
+vscode_files = []
+for root, dirs, files in os.walk(parent_dir):
+    # Skip the script's own .vscode directory
+    if root == os.path.join(script_dir, '.vscode'):
+        continue
+    for file in files:
+        if file in config_patterns and '.vscode' in root:
+            vscode_files.append(os.path.join(root, file))
 
 for file in vscode_files:
     print(f"Processing {file}")

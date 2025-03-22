@@ -3,16 +3,32 @@
 #include <unistd.h>
 #include <sys/file.h>
 #include <errno.h>
+#include <stdbool.h>
+
+#define MAX_FILE_HANDLES 256
 
 struct PlatformFile {
     int fd;
     bool is_valid;
 };
 
+static struct PlatformFile g_file_pool[MAX_FILE_HANDLES];
+static bool g_file_pool_used[MAX_FILE_HANDLES];
+
+static int acquire_file_slot(void) {
+    for (int i = 0; i < MAX_FILE_HANDLES; i++) {
+        if (!g_file_pool_used[i]) {
+            g_file_pool_used[i] = true;
+            g_file_pool[i].is_valid = false;
+            return i;
+        }
+    }
+    return -1;
+}
+
 static int get_posix_flags(PlatformFileAccess access, PlatformFileShare share) {
     int flags = 0;
     
-    // Access mode
     switch (access) {
         case PLATFORM_FILE_READ:
             flags |= O_RDONLY;
@@ -25,9 +41,8 @@ static int get_posix_flags(PlatformFileAccess access, PlatformFileShare share) {
             break;
     }
 
-    // If no sharing is requested, we'll use flock to enforce exclusive access
     if (share == PLATFORM_FILE_SHARE_NONE) {
-        flags |= O_NONBLOCK;  // For flock behavior
+        flags |= O_NONBLOCK;
     }
 
     return flags;
@@ -39,26 +54,32 @@ PlatformFileHandle platform_file_open(
     PlatformFileShare share,
     PlatformErrorCode* error_code
 ) {
-    PlatformFileHandle file = malloc(sizeof(struct PlatformFile));
-    if (!file) {
+    if (!filepath) {
+        if (error_code) *error_code = PLATFORM_ERROR_INVALID_ARGUMENT;
+        return NULL;
+    }
+
+    int slot = acquire_file_slot();
+    if (slot == -1) {
         if (error_code) *error_code = PLATFORM_ERROR_OUT_OF_MEMORY;
         return NULL;
     }
 
+    struct PlatformFile* file = &g_file_pool[slot];
+    
     int flags = get_posix_flags(access, share);
     file->fd = open(filepath, flags);
     
     if (file->fd == -1) {
-        free(file);
+        g_file_pool_used[slot] = false;
         if (error_code) *error_code = PLATFORM_ERROR_FILE_OPEN;
         return NULL;
     }
 
-    // If exclusive access requested, try to acquire lock
     if (share == PLATFORM_FILE_SHARE_NONE) {
         if (flock(file->fd, LOCK_EX | LOCK_NB) == -1) {
             close(file->fd);
-            free(file);
+            g_file_pool_used[slot] = false;
             if (error_code) *error_code = PLATFORM_ERROR_FILE_LOCKED;
             return NULL;
         }
@@ -116,11 +137,31 @@ PlatformErrorCode platform_file_get_size(
 }
 
 void platform_file_close(PlatformFileHandle handle) {
-    if (handle && handle->is_valid) {
-        // Release any exclusive lock if it exists
+    if (!handle || !handle->is_valid) {
+        return;
+    }
+
+    // Calculate the index from the handle pointer
+    ptrdiff_t index = handle - g_file_pool;
+    
+    // Validate the handle is actually from our pool
+    if (index >= 0 && index < MAX_FILE_HANDLES) {
         flock(handle->fd, LOCK_UN);
         close(handle->fd);
         handle->is_valid = false;
-        free(handle);
+        g_file_pool_used[index] = false;
     }
 }
+
+#ifdef _DEBUG
+// Debug helper to check for file handle leaks
+size_t platform_file_get_open_count(void) {
+    size_t count = 0;
+    for (int i = 0; i < MAX_FILE_HANDLES; i++) {
+        if (g_file_pool_used[i]) {
+            count++;
+        }
+    }
+    return count;
+}
+#endif
