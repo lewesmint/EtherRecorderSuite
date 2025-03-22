@@ -1,0 +1,71 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Clean and Build All (Debug)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Clean All (Debug)",
+                "Configure EtherRecorder (Debug)",
+                "Build EtherRecorder (Debug)"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Clean All (Debug)",
+            "type": "shell",
+            "windows": {
+                "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\""
+            },
+            "osx": {
+                "command": "rm -rf \"${workspaceFolder}/build/macos-arm64\""
+            }
+        },
+        {
+            "label": "Configure EtherRecorder (Debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "windows-arm64-debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Build EtherRecorder (Debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "windows-arm64-debug",
+                "--target",
+                "EtherRecorder"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$msCompile",
+                "$gcc"
+            ]
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: clean rebuild",
+            "command": "cleanRebuild",
+            "targets": [
+                "all"
+            ],
+            "preset": "${command:cmake.activeBuildPresetName}",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake template clean rebuild task"
+        }
+    ]
+}

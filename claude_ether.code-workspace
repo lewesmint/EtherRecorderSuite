@@ -1,16 +1,10 @@
 {
     "folders": [
         {
-            "path": "platform_layer",
-            "name": "Platform Layer Lib"
+            "path": "EtherRecorder"
         },
-        {
-            "path": "claude_ether_new",
-            "name": "Claude Ether New"
-        },
-        {
-            "path": "claude_ether_original"
-			"name": "Claude Ether Ol (Broken)"
+	        {
+            "path": "PlatformLayer"
         },
         {
             "path": "scripts"

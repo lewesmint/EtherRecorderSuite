@@ -1,0 +1,62 @@
+{
+    "configurations": [
+        {
+            "name": "Default",
+            "includePath": [
+                "${workspaceFolder}/../PlatformLayer/inc",
+                // PLATFORM_SWITCH_START
+                // MacOS Configuration
+                //"${workspaceFolder}/../PlatformLayer/posix/inc",
+                //"${workspaceFolder}/../PlatformLayer/macos/inc",
+                // Windows Configuration
+                "${workspaceFolder}/../PlatformLayer/windows/inc",
+                // PLATFORM_SWITCH_END
+                "${workspaceFolder}/inc"
+            ],
+            // PLATFORM_SWITCH_START
+            // MacOS Configuration
+            //"macFrameworkPath": [
+                //"/System/Library/Frameworks",
+                //"/Library/Frameworks"
+            //],
+            //"compilerPath": "/usr/bin/clang",
+            //"intelliSenseMode": "macos-clang-arm64",
+            //"defines": [
+                //"MACOS=1",
+                //"POSIX=1",
+                //"_DARWIN_C_SOURCE",
+                //"true=1",
+                //"false=0",
+                //"__STDC_VERSION__=201710L"
+            //],
+            //"compileCommands": "${workspaceFolder}/build/macos-arm64/Debug/compile_commands.json",
+            // Windows Configuration
+            "windowsSdkVersion": "10.0.22621.0",
+            "compilerPath": "cl.exe",
+            "intelliSenseMode": "msvc-arm64",
+            "defines": [
+                "WIN32=1",
+                "_WIN32_WINNT=0x0600",
+                "NOMINMAX",
+                "WIN32_LEAN_AND_MEAN",
+                "_CRT_SECURE_NO_WARNINGS",
+                "true=1",
+                "false=0",
+                "__STDC_VERSION__=201710L"
+            ],
+            // PLATFORM_SWITCH_END
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/inc",
+                    "${workspaceFolder}/../PlatformLayer/inc",
+                    "${workspaceFolder}/../PlatformLayer/windows/inc"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            },
+            "cStandard": "c17",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}

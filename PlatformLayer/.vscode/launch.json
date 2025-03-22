@@ -1,0 +1,45 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            // PLATFORM_SWITCH_START
+            // MacOS Configuration
+            //"type": "cppdbg",
+            //"program": "${workspaceFolder}/build/macos-arm64/Debug/PlatformLayer_test",
+            //"MIMode": "lldb",
+            //"externalConsole": false,
+            // Windows Configuration
+            "type": "cppvsdbg",
+            "program": "${workspaceFolder}/build/windows-arm64/Debug/PlatformLayer_test.exe",
+            "console": "externalTerminal",
+            // PLATFORM_SWITCH_END
+            "request": "launch",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "preLaunchTask": "CMake: build"
+        },
+        {
+            "name": "Release",
+            // PLATFORM_SWITCH_START
+            // MacOS Configuration
+            //"type": "cppdbg",
+            //"program": "${workspaceFolder}/build/macos-arm64/Release/PlatformLayer_test",
+            //"MIMode": "lldb",
+            //"externalConsole": false,
+            // Windows Configuration
+            "type": "cppvsdbg",
+            "program": "${workspaceFolder}/build/windows-arm64/Release/PlatformLayer_test.exe",
+            "console": "externalTerminal",
+            // PLATFORM_SWITCH_END
+            "request": "launch",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "preLaunchTask": "CMake: build"
+        }
+    ]
+}

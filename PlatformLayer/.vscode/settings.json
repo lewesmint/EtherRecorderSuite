@@ -1,0 +1,25 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "cmake.configureOnOpen": true,
+    "cmake.skipConfigureIfCachePresent": true,
+    "cmake.useCMakePresets": "always",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/inc",
+        "${workspaceFolder}/windows/inc",
+        "${workspaceFolder}/posix/inc",
+        "${workspaceFolder}/macos/inc"
+    ],
+
+    // PLATFORM_SWITCH_START
+    // MacOS Configuration
+    //"C_Cpp.default.compilerPath": "/usr/bin/clang",
+    //"C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
+    // Windows Configuration
+    "C_Cpp.default.compilerPath": "${command:cmake.activeConfigurePreset.compilerPath}",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-arm64"
+    // PLATFORM_SWITCH_END
+}
