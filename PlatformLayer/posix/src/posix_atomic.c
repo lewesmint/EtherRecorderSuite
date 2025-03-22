@@ -5,10 +5,10 @@
 
 #ifndef _WIN32
 
-#include <stdatomic.h>
 #include "platform_atomic.h"
+#include <stdatomic.h>
 
-// Initialize operations
+// Initialize operations (matching header order)
 // 8-bit initialization
 void platform_atomic_init_int8(PlatformAtomicInt8* atomic, int8_t value) {
     atomic_init((_Atomic int32_t*)&atomic->_pad, (int32_t)value);
@@ -27,7 +27,7 @@ void platform_atomic_init_uint16(PlatformAtomicUInt16* atomic, uint16_t value) {
     atomic_init((_Atomic uint32_t*)&atomic->_pad, (uint32_t)value);
 }
 
-// 32-bit initialization (direct value access)
+// 32-bit initialization
 void platform_atomic_init_int32(PlatformAtomicInt32* atomic, int32_t value) {
     atomic_init((_Atomic int32_t*)&atomic->value, value);
 }
@@ -36,7 +36,7 @@ void platform_atomic_init_uint32(PlatformAtomicUInt32* atomic, uint32_t value) {
     atomic_init((_Atomic uint32_t*)&atomic->value, value);
 }
 
-// 64-bit initialization (direct value access)
+// 64-bit initialization
 void platform_atomic_init_int64(PlatformAtomicInt64* atomic, int64_t value) {
     atomic_init((_Atomic int64_t*)&atomic->value, value);
 }
@@ -50,12 +50,12 @@ void platform_atomic_init_bool(PlatformAtomicBool* atomic, bool value) {
     atomic_init((_Atomic uint32_t*)&atomic->_pad, (uint32_t)value);
 }
 
-// Pointer initialization (direct value access)
+// Pointer initialization
 void platform_atomic_init_ptr(PlatformAtomicPtr* atomic, void* value) {
-    atomic_init((_Atomic void**)&atomic->value, value);
+    atomic_init((_Atomic uintptr_t*)&atomic->value, (uintptr_t)value);
 }
 
-// Store operations
+// Store operations (matching header order)
 // 8-bit store
 void platform_atomic_store_int8(PlatformAtomicInt8* atomic, int8_t value) {
     atomic_store((_Atomic int32_t*)&atomic->_pad, (int32_t)value);
@@ -74,13 +74,32 @@ void platform_atomic_store_uint16(PlatformAtomicUInt16* atomic, uint16_t value) 
     atomic_store((_Atomic uint32_t*)&atomic->_pad, (uint32_t)value);
 }
 
-// 32-bit store (direct value access)
+// 32-bit store
 void platform_atomic_store_int32(PlatformAtomicInt32* atomic, int32_t value) {
     atomic_store((_Atomic int32_t*)&atomic->value, value);
 }
 
 void platform_atomic_store_uint32(PlatformAtomicUInt32* atomic, uint32_t value) {
     atomic_store((_Atomic uint32_t*)&atomic->value, value);
+}
+
+// 64-bit store
+void platform_atomic_store_int64(PlatformAtomicInt64* atomic, int64_t value) {
+    atomic_store((_Atomic int64_t*)&atomic->value, value);
+}
+
+void platform_atomic_store_uint64(PlatformAtomicUInt64* atomic, uint64_t value) {
+    atomic_store((_Atomic uint64_t*)&atomic->value, value);
+}
+
+// Bool store
+void platform_atomic_store_bool(PlatformAtomicBool* atomic, bool value) {
+    atomic_store((_Atomic uint32_t*)&atomic->_pad, (uint32_t)value);
+}
+
+// Pointer store
+void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value) {
+    atomic_store((_Atomic uintptr_t*)&atomic->value, (uintptr_t)value);
 }
 
 // Load operations
@@ -120,13 +139,12 @@ uint64_t platform_atomic_load_uint64(const PlatformAtomicUInt64* atomic) {
     return atomic_load((_Atomic uint64_t*)&atomic->value);
 }
 
-// Other load
 bool platform_atomic_load_bool(const PlatformAtomicBool* atomic) {
     return (bool)atomic_load((_Atomic uint32_t*)&atomic->_pad);
 }
 
 void* platform_atomic_load_ptr(const PlatformAtomicPtr* atomic) {
-    return atomic_load((_Atomic void**)&atomic->value);
+    return (void*)atomic_load((_Atomic uintptr_t*)&atomic->value);
 }
 
 // Exchange operations
@@ -232,15 +250,6 @@ bool platform_atomic_compare_exchange_uint64(PlatformAtomicUInt64* atomic, uint6
     return atomic_compare_exchange_strong((_Atomic uint64_t*)&atomic->value, expected, desired);
 }
 
-// Bool operations
-void platform_atomic_store_bool(PlatformAtomicBool* atomic, bool value) {
-    atomic_store((_Atomic uint32_t*)&atomic->_pad, (uint32_t)value);
-}
-
-bool platform_atomic_load_bool(const PlatformAtomicBool* atomic) {
-    return (bool)atomic_load((_Atomic uint32_t*)&atomic->_pad);
-}
-
 bool platform_atomic_compare_exchange_bool(PlatformAtomicBool* atomic, bool* expected, bool desired) {
     uint32_t exp = (uint32_t)*expected;
     bool result = atomic_compare_exchange_strong(
@@ -252,17 +261,10 @@ bool platform_atomic_compare_exchange_bool(PlatformAtomicBool* atomic, bool* exp
     return result;
 }
 
-// Pointer operations (direct value access)
-void platform_atomic_store_ptr(PlatformAtomicPtr* atomic, void* value) {
-    atomic_store((_Atomic void**)&atomic->value, value);
-}
-
-void* platform_atomic_load_ptr(const PlatformAtomicPtr* atomic) {
-    return atomic_load((_Atomic void**)&atomic->value);
-}
-
 bool platform_atomic_compare_exchange_ptr(PlatformAtomicPtr* atomic, void** expected, void* desired) {
-    return atomic_compare_exchange_strong((_Atomic void**)&atomic->value, expected, desired);
+    return atomic_compare_exchange_strong((_Atomic uintptr_t*)&atomic->value, 
+                                        (uintptr_t*)expected, 
+                                        (uintptr_t)desired);
 }
 
 // Fetch-add operations
