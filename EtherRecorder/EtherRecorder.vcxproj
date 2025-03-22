@@ -158,18 +158,22 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
     <SourcePath>src;$(SourcePath)</SourcePath>
+    <LibraryPath>..\ARM64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
     <SourcePath>src;$(SourcePath)</SourcePath>
+    <LibraryPath>..\ARM64\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
     <SourcePath>src;$(SourcePath)</SourcePath>
+    <LibraryPath>..\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
     <SourcePath>src;$(SourcePath)</SourcePath>
+    <LibraryPath>..\x64\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -204,7 +208,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib;PlatformLayer.lib </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -220,7 +224,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib;PlatformLayer.lib </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -240,7 +244,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib;PlatformLayer.lib </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
@@ -256,7 +260,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib;PlatformLayer.lib </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -276,7 +280,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;ws2_32.lib;bcrypt.lib;PlatformLayer.lib </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
