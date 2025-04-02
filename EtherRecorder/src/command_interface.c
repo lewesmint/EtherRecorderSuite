@@ -10,8 +10,8 @@
 #include "app_thread.h"
 #include "thread_registry.h"
 
-#define START_MARKER 0xDEADBEEF
-#define END_MARKER   0xBEEFDEAD
+#define START_MARKER 0xBAADF00D
+#define END_MARKER   0xDEADBEEF
 #define MAX_BUFFER_SIZE 4096
 #define DEFAULT_CMD_PORT 8080
 
@@ -147,15 +147,34 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
     tmp = platform_htonl(END_MARKER);
     memcpy(ack_buffer + 12 + ack_body_len, &tmp, 4);
 
-    size_t bytes_sent = 0;
-    PlatformErrorCode result = platform_socket_send(sock, 
-                                                  ack_buffer, 
-                                                  ack_packet_length, 
-                                                  &bytes_sent);
-
-    if (result != PLATFORM_ERROR_SUCCESS || bytes_sent != ack_packet_length) {
-        logger_log(LOG_ERROR, "Failed to send ACK");
+    // Wait for socket to be writable
+    PlatformErrorCode wait_result = platform_socket_wait_writable(sock, 1000);
+    if (wait_result != PLATFORM_ERROR_SUCCESS) {
+        logger_log(LOG_ERROR, "Socket not writable: %s", 
+                  platform_socket_error_to_string(wait_result));
         return PROCESS_FAIL;
+    }
+
+    // Send with retry
+    size_t total_sent = 0;
+    while (total_sent < ack_packet_length) {
+        size_t bytes_sent = 0;
+        PlatformErrorCode result = platform_socket_send(sock, 
+            ack_buffer + total_sent,
+            ack_packet_length - total_sent,
+            &bytes_sent);
+
+        if (result == PLATFORM_ERROR_SUCCESS) {
+            total_sent += bytes_sent;
+        }
+        else if (result == PLATFORM_ERROR_TIMEOUT) {
+            continue;
+        }
+        else {
+            logger_log(LOG_ERROR, "Failed to send ACK: %s", 
+                      platform_socket_error_to_string(result));
+            return PROCESS_FAIL;
+        }
     }
 
     ctx->current_state = WAIT_FOR_START;
@@ -172,8 +191,19 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
     };
 
     while (!shutdown_signalled()) {
-        // Receive data
-        if (ctx.buffer_length < MAX_BUFFER_SIZE) {
+        // First check if socket is readable to avoid blocking
+        PlatformErrorCode wait_result = platform_socket_wait_readable(client_sock, 1000);
+        
+        // Even on timeout, we should process any data we already have in the buffer
+        if (wait_result != PLATFORM_ERROR_SUCCESS && 
+            wait_result != PLATFORM_ERROR_TIMEOUT) {
+            logger_log(LOG_ERROR, "Socket wait error, closing connection");
+            break;
+        }
+
+        // Only try to receive more data if we got PLATFORM_ERROR_SUCCESS
+        if (wait_result == PLATFORM_ERROR_SUCCESS && 
+            ctx.buffer_length < MAX_BUFFER_SIZE) {
             size_t bytes_received = 0;
             PlatformErrorCode result = platform_socket_receive(
                 client_sock,
@@ -182,38 +212,49 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
                 &bytes_received
             );
 
-            if (result != PLATFORM_ERROR_SUCCESS || bytes_received == 0) {
+            if (result == PLATFORM_ERROR_SOCKET_CLOSED) {
+                logger_log(LOG_INFO, "Client disconnected");
                 break;
             }
-
-            ctx.buffer_length += bytes_received;
+            if (result != PLATFORM_ERROR_SUCCESS) {
+                logger_log(LOG_ERROR, "Socket receive error: %s", 
+                          platform_socket_error_to_string(result));
+                break;
+            }
+            if (bytes_received > 0) {
+                ctx.buffer_length += bytes_received;
+            }
         }
 
-        // Process state machine
-        ProcessResult result = PROCESS_FAIL;  // Initialize with default value
-        switch (ctx.current_state) {
-            case WAIT_FOR_START:
-                result = process_wait_for_start(client_sock, &ctx);
-                break;
-            case WAIT_FOR_LENGTH:
-                result = process_wait_for_length(client_sock, &ctx);
-                break;
-            case WAIT_FOR_MESSAGE:
-                result = process_wait_for_message(client_sock, &ctx);
-                break;
-            case SEND_ACK:
-                result = process_send_ack(client_sock, &ctx);
-                break;
-            default:
-                logger_log(LOG_ERROR, "Invalid command state: %d", ctx.current_state);
-                break;
-        }
+        // Always process state machine if we have any data in the buffer
+        if (ctx.buffer_length > 0) {
+            ProcessResult result = PROCESS_FAIL;
+            switch (ctx.current_state) {
+                case WAIT_FOR_START:
+                    result = process_wait_for_start(client_sock, &ctx);
+                    break;
+                case WAIT_FOR_LENGTH:
+                    result = process_wait_for_length(client_sock, &ctx);
+                    break;
+                case WAIT_FOR_MESSAGE:
+                    result = process_wait_for_message(client_sock, &ctx);
+                    break;
+                case SEND_ACK:
+                    result = process_send_ack(client_sock, &ctx);
+                    break;
+                default:
+                    logger_log(LOG_ERROR, "Invalid command state: %d", ctx.current_state);
+                    break;
+            }
 
-        if (result == PROCESS_FAIL) {
-            break;
-        }
-        else if (result == PROCESS_NEED_MORE_DATA) {
-            continue;
+            if (result == PROCESS_FAIL) {
+                break;
+            }
+            // Only continue if we need more data, otherwise keep processing
+            // the buffer as we might have multiple messages
+            if (result == PROCESS_NEED_MORE_DATA) {
+                continue;
+            }
         }
     }
 }
