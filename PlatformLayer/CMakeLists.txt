@@ -69,25 +69,25 @@ else()
 endif()
 
 # Common sources
-file(GLOB_RECURSE COMMON_SOURCES 
+file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 
 # Platform-specific sources
 if(WIN32)
-    file(GLOB_RECURSE PLATFORM_SOURCES 
+    file(GLOB_RECURSE PLATFORM_SOURCES
         "windows/src/*.c"
         "windows/src/**/*.c"
     )
 elseif(APPLE)
-    file(GLOB_RECURSE PLATFORM_SOURCES 
+    file(GLOB_RECURSE PLATFORM_SOURCES
         "posix/src/*.c"
         "posix/src/**/*.c"
         "macos/src/*.c"
         "macos/src/**/*.c"
     )
 else()
-    file(GLOB_RECURSE PLATFORM_SOURCES 
+    file(GLOB_RECURSE PLATFORM_SOURCES
         "posix/src/*.c"
         "posix/src/**/*.c"
     )
@@ -121,8 +121,8 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${HEADER_FILES})
 
 # Add compiler warnings
 if(MSVC)
-    target_compile_options(PlatformLayer PRIVATE 
-        /W4 
+    target_compile_options(PlatformLayer PRIVATE
+        /W4
         /WX      # Treat warnings as errors
         /wd4100  # Unreferenced formal parameter
         /wd4200  # Zero-sized array in struct/union
@@ -136,7 +136,7 @@ endif()
 
 # Platform-specific libraries
 if(WIN32)
-    target_link_libraries(PlatformLayer PRIVATE 
+    target_link_libraries(PlatformLayer PRIVATE
         shlwapi     # Shell API
         bcrypt      # Cryptography
         ws2_32      # Windows Sockets
@@ -161,6 +161,9 @@ install(DIRECTORY inc/
     DESTINATION include/PlatformLayer
     FILES_MATCHING PATTERN "*.h"
 )
+
+# Add tests subdirectory
+add_subdirectory(tests)
 
 # if(MSVC)
 #     add_custom_command(
