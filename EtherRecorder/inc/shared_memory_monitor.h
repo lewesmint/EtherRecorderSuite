@@ -9,7 +9,6 @@
 #include <stddef.h>
 #include "platform_error.h"
 #include "platform_shared_memory.h"
-#include "thread_registry.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,11 +36,16 @@ typedef struct {
 PlatformErrorCode shared_memory_monitor_init_config(SharedMemoryMonitorConfig* config);
 
 /**
+ * @brief Forward declaration for thread configuration
+ */
+struct ThreadConfig;
+
+/**
  * @brief Get the shared memory monitor thread configuration
  * 
- * @return ThreadConfig* Pointer to thread configuration
+ * @return Pointer to thread configuration
  */
-ThreadConfig* get_shared_memory_monitor_thread(void);
+struct ThreadConfig* get_shared_memory_monitor_thread(void);
 
 #ifdef __cplusplus
 }

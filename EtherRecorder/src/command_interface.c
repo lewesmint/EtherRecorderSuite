@@ -148,12 +148,12 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
     memcpy(ack_buffer + 12 + ack_body_len, &tmp, 4);
 
     // Wait for socket to be writable
-    PlatformErrorCode wait_result = platform_socket_wait_writable(sock, 1000);
-    if (wait_result != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Socket not writable: %s", 
-                  platform_socket_error_to_string(wait_result));
-        return PROCESS_FAIL;
-    }
+    // PlatformErrorCode wait_result = platform_socket_wait_writable(sock, 1000);
+    // if (wait_result != PLATFORM_ERROR_SUCCESS) {
+    //     logger_log(LOG_ERROR, "Socket not writable: %s", 
+    //               platform_socket_error_to_string(wait_result));
+    //     return PROCESS_FAIL;
+    // }
 
     // Send with retry
     size_t total_sent = 0;
@@ -171,8 +171,8 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
             continue;
         }
         else {
-            logger_log(LOG_ERROR, "Failed to send ACK: %s", 
-                      platform_socket_error_to_string(result));
+            // logger_log(LOG_ERROR, "Failed to send ACK: %s", 
+            //          platform_socket_error_to_string(result));
             return PROCESS_FAIL;
         }
     }
@@ -217,8 +217,8 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
                 break;
             }
             if (result != PLATFORM_ERROR_SUCCESS) {
-                logger_log(LOG_ERROR, "Socket receive error: %s", 
-                          platform_socket_error_to_string(result));
+            //    logger_log(LOG_ERROR, "Socket receive error: %s", 
+            //              platform_socket_error_to_string(result));
                 break;
             }
             if (bytes_received > 0) {
