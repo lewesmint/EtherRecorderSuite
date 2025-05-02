@@ -158,15 +158,15 @@ int main() {
         return 1;
     }
 
-    printf("\nWaiting 1 second before opening shared memory...\n");
-    Sleep(1000); // Add a delay to ensure shared memory is properly created
+    printf("\nShared memory created and ready for access.\n");
+    printf("The shared memory name is 'TestSharedMemory'\n");
+    printf("The shared memory contains the string 'Hello from shared memory!'\n");
+    printf("The shared memory will remain open for 60 seconds...\n");
 
-    if (!test_open_and_read()) {
-        printf("Open and read test failed\n");
-        if (g_handle) {
-            win_shared_memory_close(g_handle);
-        }
-        return 1;
+    // Keep the shared memory open for 60 seconds
+    for (int i = 60; i > 0; i--) {
+        printf("\rTime remaining: %d seconds...  ", i);
+        Sleep(1000);
     }
 
     // Clean up global handle
@@ -175,6 +175,6 @@ int main() {
         g_handle = NULL;
     }
 
-    printf("\nAll tests completed successfully\n");
+    printf("\nShared memory cleaned up\n");
     return 0;
 }

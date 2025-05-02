@@ -1,0 +1,48 @@
+// Windows Shared Memory Test Configuration
+// This file is used by test_win_shared_memory.py to configure shared memory testing
+// Comments are supported in JSONC format (JSON with Comments)
+
+{
+    // Configuration for monitoring shared memory
+    "monitor": {
+        // Name of the shared memory segment
+        "name": "TestSharedMemory",
+        
+        // Size of the shared memory segment (null for auto-detect)
+        "size": null,
+        
+        // Interval between checks in seconds
+        "interval": 1.0,
+        
+        // Duration to monitor in seconds (0 for indefinite)
+        "duration": 60.0,
+        
+        // Number of retry attempts
+        "retries": 5,
+        
+        // Interval between retry attempts in seconds
+        "retry_interval": 2.0,
+        
+        // Whether to wait indefinitely for the shared memory
+        "wait": true
+    }
+    
+    /* Commented out configurations (for reference)
+    
+    // Configuration for creating shared memory
+    "create": {
+        "name": "TestSharedMemory",
+        "size": 1024,
+        "data": "Hello from Python!"
+    },
+    
+    // Configuration for reading from shared memory
+    "read": {
+        "name": "TestSharedMemory",
+        "size": null,
+        "retries": 5,
+        "retry_interval": 2.0,
+        "wait": false
+    }
+    */
+}

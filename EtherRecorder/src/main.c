@@ -7,6 +7,7 @@
 #include "platform_console.h"
 #include "platform_string.h"
 #include "platform_sockets.h"
+#include "platform_shared_memory.h"
 
 // Project includes
 #include "utils.h"
@@ -17,6 +18,7 @@
 #include "shutdown_handler.h"
 #include "message_types.h"
 #include "version_info.h"
+#include "shared_memory_monitor.h"
 
 #define MAX_PATH_LEN 256
 
@@ -55,9 +57,9 @@ static bool parse_args(int argc, char *argv[]) {
 static PlatformErrorCode init_app(void) {
     // ensure we never try to log without the mutex in place by calling this here
     init_logger_mutex();
-    
+
     PlatformErrorCode result;
-    
+
     // Initialize console first for basic output
     result = platform_console_init();
     if (result != PLATFORM_ERROR_SUCCESS) {
@@ -66,23 +68,23 @@ static PlatformErrorCode init_app(void) {
 
     // Print version information immediately after console init
     print_version_info();
-    
+
     // Initialize thread timestamp system
     init_thread_timestamp_system();
     set_thread_label("MAIN");
-    
+
     // Install shutdown handler
     if (!install_shutdown_handler()) {
         return PLATFORM_ERROR_SYSTEM;
     }
-    
+
     // Load configuration
     char config_load_result[LOG_MSG_BUFFER_SIZE];
     if (!load_config(config_file_name, config_load_result)) {
         printf("Failed to initialise configuration: %s\n", config_load_result);
         // Continue with defaults
     } else {
-        logger_log(LOG_INFO, "Using config file: %s\n", config_file_name); 
+        logger_log(LOG_INFO, "Using config file: %s\n", config_file_name);
         logger_log(LOG_INFO, "Configuration: %s", config_load_result);
     }
 
@@ -107,44 +109,44 @@ static PlatformErrorCode init_app(void) {
         logger_log(LOG_ERROR, "Failed to initialize thread management");
         return PLATFORM_ERROR_THREAD_CREATE;
     }
-    
+
     // Initialize sockets
     result = platform_socket_init();
     if (result != PLATFORM_ERROR_SUCCESS) {
         logger_log(LOG_ERROR, "Failed to initialize sockets");
         return result;
     }
-    
+
     logger_log(LOG_INFO, "Application initialization complete");
     return PLATFORM_ERROR_SUCCESS;
 }
 
 static PlatformErrorCode cleanup_app(void) {
     PlatformErrorCode result = PLATFORM_ERROR_SUCCESS;
-    
+
     // Wait for all threads to complete
     if (thread_registry_wait_all(7620) != THREAD_REG_SUCCESS) {
         logger_log(LOG_WARN, "Timeout waiting for threads to complete");
     }
-    
+
     // Clean up in reverse order of initialization
     app_thread_cleanup();
     platform_socket_cleanup();
     cleanup_shutdown_handler();
     logger_close();
     free_config();
-    
+
     // Ensure terminal is in a good state before exit
     platform_console_reset_formatting();
     platform_console_set_echo(true);
     platform_console_set_line_buffering(true);
     platform_console_show_cursor(true);
     platform_console_cleanup();
-    
+
     // Flush any remaining output
     fflush(stdout);
     fflush(stderr);
-    
+
     return result;
 }
 
@@ -158,19 +160,19 @@ static bool send_demo_text_message(void) {
         return false;
     }
     message.header.content_size = (uint32_t)content_len;
-    
+
     if (message.header.content_size > sizeof(message.content)) {
         logger_log(LOG_ERROR, "Message too long for content buffer");
         return false;
     }
-    
+
     memcpy(message.content, msg_text, message.header.content_size);
-    
+
     MessageQueue_T* demo_queue = get_queue_by_label("DEMO_HEARTBEAT");
     if (!demo_queue) {
         return false;
     }
-    
+
     return message_queue_push(demo_queue, &message, 100);
 }
 
@@ -202,11 +204,11 @@ int main(int argc, char *argv[]) {
         if (!send_demo_text_message()) {
             // logger_log(LOG_ERROR, "Failed to send demo message");
         }
-        
+
         logger_log(LOG_DEBUG, "HEARTBEAT");
         sleep_ms(762);
     }
-    
+
     result = cleanup_app();
     if (result != PLATFORM_ERROR_SUCCESS) {
         platform_get_error_message_from_code(result, error_message, sizeof(error_message));
