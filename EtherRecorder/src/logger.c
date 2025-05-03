@@ -66,11 +66,11 @@ static int g_log_file_count = 0;
 
 // Modified existing structure to reference LogFile
 typedef struct ThreadLogFile {
-    char thread_label[MAX_PATH_LEN];
     LogFile *log_file;  // Points to entry in log_files table
+    bool first_open;    // Keeping this temporarily until we migrate functionality
+    char thread_label[MAX_PATH_LEN];
     // Removed: FILE *log_fp;
     // Removed: char log_file_name[MAX_PATH_LEN];
-    bool first_open;  // Keeping this temporarily until we migrate functionality
 } ThreadLogFile;
 
 typedef enum LogTimestampGranularity {

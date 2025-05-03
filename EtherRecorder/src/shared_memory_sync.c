@@ -5,7 +5,7 @@
 #include "platform_sockets.h"
 #include "platform_shared_memory.h"
 #include "platform_time.h"
-// Remove platform_thread.h and rely on thread_registry.h
+#include "platform_string.h"
 #include "thread_registry.h"
 #include "app_thread.h"
 #include "logger.h"
@@ -60,8 +60,8 @@ PlatformErrorCode shared_memory_sync_init(const char* config_section) {
 
     // Read configuration from INI file
     const char* name = get_config_string(config_section, "name", sync_config.name);
-    strncpy(sync_config.name, name, sizeof(sync_config.name) - 1);
-    sync_config.name[sizeof(sync_config.name) - 1] = '\0';
+    sync_config.name[0] = '\0';  // Initialize to empty string
+    platform_strcat(sync_config.name, name, sizeof(sync_config.name));
 
     const char* hostname = get_config_string(config_section, "hostname", sync_config.hostname);
     strncpy(sync_config.hostname, hostname, sizeof(sync_config.hostname) - 1);

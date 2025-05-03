@@ -8,6 +8,18 @@
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "cmake.sourceDirectory": "${workspaceFolder}",
+    "C_Cpp.codeAnalysis.clangTidy.checks.disabled": [
+        "clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling"
+    ],
+    "files.associations": {
+        "*.c": "c",
+        "*.h": "c"
+    },
+    "C_Cpp.codeAnalysis.runAutomatically": false,
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.enhancedColorization": "enabled",
+    "C_Cpp.suggestSnippets": false,
+    "C_Cpp.loggingLevel": "Warning",
 
     // PLATFORM_SWITCH_START
     // MacOS Configuration

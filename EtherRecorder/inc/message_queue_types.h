@@ -13,6 +13,7 @@
 
 // Message types
 typedef enum {
+    MSG_TYPE_INVALID = 0,
     MSG_TYPE_RELAY = 1,
     MSG_TYPE_TEST = 2,
     MSG_TYPE_FILE_CHUNK = 3,  // For file chunks

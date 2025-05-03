@@ -22,7 +22,7 @@
 #include "app_error.h"
 
 #include "client_manager.h"
-#include "shared_memory_monitor.h"
+#include "shared_memory_manager.h"
 #include "command_interface.h"
 #include "log_queue.h"
 #include "logger.h"
@@ -320,7 +320,7 @@ void start_threads(void) {
         // { get_server_thread(), false },            // Server thread is not essential
         // { get_client_thread(), false },            // Add client thread
         // { get_command_interface_thread(), false }, // Command interface is not essential
-        { get_shared_memory_monitor_thread(), false }, // Shared memory monitor is not essential
+        { get_shared_memory_manager_thread(), false }, // Shared memory manager is not essential
         { get_demo_heartbeat_thread(), false }
     };
     

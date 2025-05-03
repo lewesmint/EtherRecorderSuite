@@ -1,0 +1,214 @@
+/**
+ * @file win_shared_memory.c
+ * @brief Windows implementation of platform shared memory operations
+ */
+#include "platform_shared_memory.h"
+#include "platform_error.h"
+
+#include <windows.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct PlatformSharedMemory {
+    HANDLE mapping_handle;
+    void* mapped_address;
+    size_t size;
+    char name[MAX_PATH];
+    PlatformSharedMemoryAccess access;
+    bool is_owner;
+};
+
+PlatformErrorCode platform_shared_memory_open(
+    PlatformSharedMemoryHandle* handle,
+    const char* name,
+    size_t size,
+    PlatformSharedMemoryAccess access,
+    bool create_new
+) {
+    if (!handle || !name) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Allocate the handle structure
+    struct PlatformSharedMemory* shm = (struct PlatformSharedMemory*)malloc(sizeof(struct PlatformSharedMemory));
+    if (!shm) {
+        return PLATFORM_ERROR_MEMORY_ALLOC;
+    }
+
+    // Initialize the structure
+    memset(shm, 0, sizeof(struct PlatformSharedMemory));
+    strncpy(shm->name, name, MAX_PATH - 1);
+    shm->size = size;
+    shm->access = access;
+    shm->is_owner = create_new;
+
+    // Determine access rights
+    DWORD desired_access = 0;
+    if (access & PLATFORM_SHM_READ) {
+        desired_access |= FILE_MAP_READ;
+    }
+    if (access & PLATFORM_SHM_WRITE) {
+        desired_access |= FILE_MAP_WRITE;
+    }
+
+    // Determine creation flags
+    DWORD protection = PAGE_READONLY;
+    if (access & PLATFORM_SHM_WRITE) {
+        protection = PAGE_READWRITE;
+    }
+
+    if (create_new) {
+        // Create a new shared memory segment
+        if (size == 0) {
+            free(shm);
+            return PLATFORM_ERROR_INVALID_ARGUMENT;
+        }
+
+        shm->mapping_handle = CreateFileMappingA(
+            INVALID_HANDLE_VALUE,  // Use paging file
+            NULL,                  // Default security attributes
+            protection,            // Read/write access
+            (DWORD)((size >> 32) & 0xFFFFFFFF),  // High-order DWORD of size
+            (DWORD)(size & 0xFFFFFFFF),          // Low-order DWORD of size
+            name                   // Name of the mapping object
+        );
+    } else {
+        // Open an existing shared memory segment
+        shm->mapping_handle = OpenFileMappingA(
+            desired_access,        // Read/write access
+            FALSE,                 // Do not inherit the name
+            name                   // Name of the mapping object
+        );
+    }
+
+    if (shm->mapping_handle == NULL) {
+        DWORD error = GetLastError();
+        free(shm);
+        
+        if (error == ERROR_FILE_NOT_FOUND) {
+            return PLATFORM_ERROR_FILE_NOT_FOUND;
+        }
+        return PLATFORM_ERROR_SYSTEM;
+    }
+
+    *handle = shm;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_shared_memory_map(
+    PlatformSharedMemoryHandle handle,
+    void** data
+) {
+    if (!handle || !data) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Determine access rights
+    DWORD desired_access = 0;
+    if (handle->access & PLATFORM_SHM_READ) {
+        desired_access |= FILE_MAP_READ;
+    }
+    if (handle->access & PLATFORM_SHM_WRITE) {
+        desired_access |= FILE_MAP_WRITE;
+    }
+
+    // Map the shared memory
+    handle->mapped_address = MapViewOfFile(
+        handle->mapping_handle,    // Handle to the mapping object
+        desired_access,            // Read/write access
+        0,                         // High-order DWORD of offset
+        0,                         // Low-order DWORD of offset
+        handle->size               // Number of bytes to map (0 = all)
+    );
+
+    if (handle->mapped_address == NULL) {
+        return PLATFORM_ERROR_SYSTEM;
+    }
+
+    *data = handle->mapped_address;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_shared_memory_unmap(
+    PlatformSharedMemoryHandle handle
+) {
+    if (!handle || !handle->mapped_address) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!UnmapViewOfFile(handle->mapped_address)) {
+        return PLATFORM_ERROR_SYSTEM;
+    }
+
+    handle->mapped_address = NULL;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_shared_memory_close(
+    PlatformSharedMemoryHandle handle
+) {
+    if (!handle) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Unmap if still mapped
+    if (handle->mapped_address) {
+        platform_shared_memory_unmap(handle);
+    }
+
+    // Close the handle
+    if (handle->mapping_handle) {
+        CloseHandle(handle->mapping_handle);
+    }
+
+    // Free the structure
+    free(handle);
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_shared_memory_get_size(
+    PlatformSharedMemoryHandle handle,
+    size_t* size
+) {
+    if (!handle || !size) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    // If we created the segment, we know the size
+    if (handle->size > 0) {
+        *size = handle->size;
+        return PLATFORM_ERROR_SUCCESS;
+    }
+
+    // For existing segments, we need to query the size
+    // Windows doesn't provide a direct API for this, so we'll need to map it first
+    if (!handle->mapped_address) {
+        return PLATFORM_ERROR_NOT_INITIALIZED;
+    }
+
+    // Get memory information
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(handle->mapped_address, &info, sizeof(info)) == 0) {
+        return PLATFORM_ERROR_SYSTEM;
+    }
+
+    *size = info.RegionSize;
+    handle->size = info.RegionSize;  // Cache the size
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_shared_memory_get_data(
+    PlatformSharedMemoryHandle handle,
+    void** data
+) {
+    if (!handle || !data) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!handle->mapped_address) {
+        return PLATFORM_ERROR_NOT_INITIALIZED;
+    }
+
+    *data = handle->mapped_address;
+    return PLATFORM_ERROR_SUCCESS;
+}

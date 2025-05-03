@@ -35,7 +35,6 @@ static bool parse_args(int argc, char *argv[]) {
         if (strcmp(argv[i], "-c") == 0 && (i + 1) < argc) {
             char *config_file = argv[++i];  // Optional config file argument
             if (*config_file != '\0') {
-                // Replace strncpy with platform_strcat
                 config_file_name[0] = '\0';  // Initialize to empty string
                 platform_strcat(config_file_name, config_file, sizeof(config_file_name));
                 return true;  // Successfully parsed config file argument
@@ -123,7 +122,8 @@ static PlatformErrorCode cleanup_app(void) {
     PlatformErrorCode result = PLATFORM_ERROR_SUCCESS;
     
     // Wait for all threads to complete
-    if (thread_registry_wait_all(7620) != THREAD_REG_SUCCESS) {
+    PlatformWaitResult wait_result = thread_registry_wait_all(7620);
+    if (wait_result != PLATFORM_WAIT_SUCCESS) {
         logger_log(LOG_WARN, "Timeout waiting for threads to complete");
     }
     
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
         }
         
         logger_log(LOG_DEBUG, "HEARTBEAT");
-        sleep_ms(762);
+        sleep_ms(5000);
     }
     
     result = cleanup_app();
