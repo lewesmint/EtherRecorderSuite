@@ -151,7 +151,7 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
     PlatformErrorCode wait_result = platform_socket_wait_writable(sock, 1000);
     if (wait_result != PLATFORM_ERROR_SUCCESS) {
         logger_log(LOG_ERROR, "Socket not writable: %s", 
-                  platform_socket_error_to_string(wait_result));
+                  platform_get_error_message_from_code(wait_result, NULL, 0));
         return PROCESS_FAIL;
     }
 
