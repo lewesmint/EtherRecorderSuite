@@ -94,6 +94,14 @@ const char* log_level_to_string(LogLevel level);
 void log_now(const LogEntry_T *entry);
 
 /**
+ * @brief Flushes any pending log messages to disk.
+ * 
+ * This ensures all queued log entries are processed and written to disk before
+ * performing critical operations like detaching from the console.
+ */
+void logger_flush(void);
+
+/**
  * @brief Closes the logger and releases any resources.
  */
 void logger_close(void);

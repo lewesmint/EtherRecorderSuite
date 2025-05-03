@@ -133,7 +133,7 @@ PlatformErrorCode handle_send(CommContext* context, char* buffer, size_t buffer_
     PlatformErrorCode result = platform_socket_wait_writable(context->socket, context->timeout_ms);
     if (result != PLATFORM_ERROR_SUCCESS) {
         if (result == PLATFORM_ERROR_TIMEOUT) {
-            return true;  // Timeout is not an error condition
+            reteurn true;  // Timeout is not an error condition
         }
         // Any other error should close the connection
         comm_context_close(context);

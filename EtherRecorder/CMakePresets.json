@@ -17,8 +17,7 @@
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug"
             },
             "vendor": {
                 "microsoft.com/VisualStudioSettings/CMake/1.0": {

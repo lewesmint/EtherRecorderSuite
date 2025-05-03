@@ -244,3 +244,48 @@ void free_config(void) {
     }
     config_entries = NULL;
 }
+
+/**
+ * @brief Sets a configuration value, overriding any existing entry.
+ * 
+ * @param section The section of the configuration.
+ * @param key The key within the section.
+ * @param value The value to set.
+ * @return true if successful, false otherwise.
+ */
+bool set_config_value(const char* section, const char* key, const char* value) {
+    if (!section || !key || !value) {
+        return false;
+    }
+
+    // First check if the entry exists
+    ConfigEntry* entry = find_config_entry(section, key);
+    if (entry) {
+        // Update existing entry
+        strncpy(entry->value, value, sizeof(entry->value) - 1);
+        entry->value[sizeof(entry->value) - 1] = '\0';
+        return true;
+    }
+
+    // Create a new entry
+    ConfigEntry* new_entry = (ConfigEntry*)malloc(sizeof(ConfigEntry));
+    if (!new_entry) {
+        return false;
+    }
+    
+    // Initialize strings
+    new_entry->section[0] = '\0';
+    new_entry->key[0] = '\0';
+    new_entry->value[0] = '\0';
+    
+    // Copy values using platform_strcat for safety
+    platform_strcat(new_entry->section, section, sizeof(new_entry->section));
+    platform_strcat(new_entry->key, key, sizeof(new_entry->key));
+    platform_strcat(new_entry->value, value, sizeof(new_entry->value));
+    
+    // Add to linked list
+    new_entry->next = config_entries;
+    config_entries = new_entry;
+    
+    return true;
+}

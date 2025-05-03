@@ -150,6 +150,22 @@ PlatformErrorCode platform_console_read_char(char* ch);
  */
 bool platform_console_key_available(void);
 
+/**
+ * @brief Detach the process from its console
+ * 
+ * This function allows the application to run in the background even if the 
+ * console window is closed. All stdout/stderr output should be redirected to files
+ * before calling this function.
+ * 
+ * On Windows: Uses FreeConsole() to disconnect from the console that started the process
+ * On POSIX: Redirects standard streams to /dev/null or specified files
+ * 
+ * @param redirect_stdout Path to redirect stdout (NULL for no redirection)
+ * @param redirect_stderr Path to redirect stderr (NULL for no redirection)
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_console_detach(const char* redirect_stdout, const char* redirect_stderr);
+
 #ifdef __cplusplus
 }
 #endif

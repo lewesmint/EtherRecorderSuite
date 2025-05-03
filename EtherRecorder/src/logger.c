@@ -52,6 +52,9 @@ extern const ThreadConfig ThreadConfigTemplate;
 
 extern bool console_logging_suspended;
 
+// Flag to track headless mode operation
+static bool g_headless_mode = false;
+
 // New structure to manage unique file pointers
 typedef struct LogFile {
     char file_name[MAX_PATH_LEN];
@@ -271,16 +274,13 @@ void init_logger_mutex(void) {
      }
      else {
          char log_buffer[LOG_MSG_BUFFER_SIZE];
-         size_t written = snprintf(log_buffer, sizeof(log_buffer),
+         snprintf(log_buffer, sizeof(log_buffer),
              "%0*llu %s %s%s%s: [%s] %s\n",
              index_width, entry->index,
              time_buffer,
              log_colour, log_level_to_string(entry->level), reset_colour,
              entry->thread_label,
              entry->message);
-         if (written > 0 && written < sizeof(log_buffer)) {
-             stream_print(log_output, "%s", log_buffer);
-         }
      }
  
      fflush(log_output);
@@ -471,8 +471,11 @@ void set_thread_log_file_from_config(const char* thread_label) {
      strip_directory_path(log_file->file_name, directory_path, sizeof(directory_path));
      create_log_directory(directory_path, &directory_creation_failure_count);
 
-     // Open file
-     char* mode = g_purge_logs_on_restart ? "w" : "a";
+     // Open file with shared read access
+     char* base_mode = g_purge_logs_on_restart ? "w" : "a";
+     char mode[4] = "";
+     snprintf(mode, sizeof(mode), "%s+S", base_mode);  // S flag for shared access
+     
      FILE* fp = NULL;
      PlatformErrorCode err = platform_fopen(&fp, log_file->file_name, mode);
      
@@ -626,13 +629,16 @@ static void generate_rotated_log_filename(const char* original_filename, char* r
   * @param entry The formatted log message.
   */
 void log_immediately(const LogEntry_T* entry) {
-    // mutex will have been aquired by the caller
+    // mutex will have been acquired by the caller
      if (!entry || entry->message[0] == '\0') {
-         char error_buffer[LOG_MSG_BUFFER_SIZE];
-         size_t written = (size_t)snprintf(error_buffer, sizeof(error_buffer), 
-             "Log Error: Attempted to log NULL or blank message\n");
-         if (written > 0 && written < sizeof(error_buffer)) {
-             stream_print(stderr, "%s", error_buffer);
+         // Only output error message to console if not in headless mode
+         if (!g_headless_mode) {
+             char error_buffer[LOG_MSG_BUFFER_SIZE];
+             size_t written = (size_t)snprintf(error_buffer, sizeof(error_buffer), 
+                 "Log Error: Attempted to log NULL or blank message\n");
+             if (written > 0 && written < sizeof(error_buffer)) {
+                 stream_print(stderr, "%s", error_buffer);
+             }
          }
          return;
      }
@@ -647,18 +653,21 @@ void log_immediately(const LogEntry_T* entry) {
      /* Check if we have a valid LogFile before attempting file operations */
      if (!tlf->log_file || !tlf->log_file->file_name[0]) {
          can_log_to_file = false;
-         current_output = LOG_OUTPUT_SCREEN;  // Temporary fallback to screen logging
+         // Only fallback to screen logging if not in headless mode
+         current_output = g_headless_mode ? LOG_OUTPUT_FILE : LOG_OUTPUT_SCREEN;
      } else {
          /* Rotate & open the main log file if needed */
          if (tlf->log_file->fp) {
              if (!rotate_log_file_if_needed(tlf->log_file)) {
                  can_log_to_file = false;
-                 current_output = LOG_OUTPUT_SCREEN;  // Fallback to screen logging
+                 // Only fallback to screen logging if not in headless mode
+                 current_output = g_headless_mode ? LOG_OUTPUT_FILE : LOG_OUTPUT_SCREEN;
              }
          }
          if (!open_log_file_if_needed(tlf->log_file)) {
              can_log_to_file = false;
-             current_output = LOG_OUTPUT_SCREEN;  // Fallback to screen logging
+             // Only fallback to screen logging if not in headless mode
+             current_output = g_headless_mode ? LOG_OUTPUT_FILE : LOG_OUTPUT_SCREEN;
          }
 
          /* Check if the current thread has a specific log file */
@@ -666,11 +675,15 @@ void log_immediately(const LogEntry_T* entry) {
              if (thread_label && strcmp_nocase(thread_log_files[i].thread_label, thread_label) == 0) {
                  if (thread_log_files[i].log_file->fp) {
                      if (!rotate_log_file_if_needed(thread_log_files[i].log_file)) {
-                         stream_print(stderr, "File Error: Could not rotate log file for thread %s\n", thread_label);
+                         if (!g_headless_mode) {
+                             stream_print(stderr, "File Error: Could not rotate log file for thread %s\n", thread_label);
+                         }
                      }
                  }
                  if (!open_log_file_if_needed(thread_log_files[i].log_file)) {
-                     stream_print(stderr, "File Error: Could not open log file for thread %s\n", thread_label);
+                     if (!g_headless_mode) {
+                         stream_print(stderr, "File Error: Could not open log file for thread %s\n", thread_label);
+                     }
                  }
                  tlf = &thread_log_files[i];
                  break;
@@ -683,11 +696,12 @@ void log_immediately(const LogEntry_T* entry) {
          publish_log_entry(entry, tlf->log_file->fp);
      }
 
-     /* Log to screen if enabled */
-     if (!console_logging_suspended && (current_output == LOG_OUTPUT_SCREEN || current_output == LOG_OUTPUT_BOTH)) {
+     /* Log to screen if enabled and not in headless mode */
+     if (!g_headless_mode && !console_logging_suspended && 
+         (current_output == LOG_OUTPUT_SCREEN || current_output == LOG_OUTPUT_BOTH)) {
          publish_log_entry(entry, stderr);
      }
- }
+}
  
  
  /**
@@ -761,11 +775,19 @@ void log_immediately(const LogEntry_T* entry) {
 
      lock_mutex(&logging_mutex);
 
-     g_purge_logs_on_restart = get_config_bool("logger", "purge_logs_on_restart", g_purge_logs_on_restart);
+     // Check if running in headless mode
+     g_headless_mode = get_config_bool("app", "headless", false);
+     
+     // If in headless mode, force file-only logging regardless of configuration
+     if (g_headless_mode) {
+         g_log_output = LOG_OUTPUT_FILE;
+     } else {
+         // Only read log destination setting if not in headless mode
+         const char* config_log_destination = get_config_string("logger", "log_destination", NULL);
+         g_log_output = log_output_from_string(config_log_destination, LOG_OUTPUT_SCREEN);
+     }
 
-     /* Read log destination */
-     const char* config_log_destination = get_config_string("logger", "log_destination", NULL);
-     g_log_output = log_output_from_string(config_log_destination, LOG_OUTPUT_SCREEN);
+     g_purge_logs_on_restart = get_config_bool("logger", "purge_logs_on_restart", g_purge_logs_on_restart);
 
      /* Read timestamp granularity */
      const char* config_timestamp_granularity = get_config_string("logger", "timestamp_granularity", NULL);
@@ -928,4 +950,29 @@ ThreadConfig* get_logger_thread(void) {
         initialized = true;
     }
     return &logger_thread;
+}
+
+/**
+ * @brief Flushes any pending log messages to disk
+ * 
+ * This ensures all queued log entries are processed before
+ * performing critical operations like detaching from the console.
+ */
+void logger_flush(void) {
+    lock_mutex(&logging_mutex);
+    
+    // Flush all log files
+    for (int i = 0; i < g_log_file_count; i++) {
+        if (log_files[i].fp) {
+            fflush(log_files[i].fp);
+        }
+    }
+    
+    // Process any pending log messages in the queue
+    LogEntry_T entry;
+    while (log_queue_pop(&global_log_queue, &entry)) {
+        log_immediately(&entry);
+    }
+    
+    unlock_mutex(&logging_mutex);
 }

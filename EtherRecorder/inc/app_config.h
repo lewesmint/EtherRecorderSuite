@@ -21,6 +21,16 @@
 bool load_config(const char* filename, char* log_result);
 
 /**
+ * @brief Sets a configuration value override.
+ * 
+ * @param section The section of the configuration.
+ * @param key The key within the section.
+ * @param value The value to set.
+ * @return true if successful, false otherwise.
+ */
+bool set_config_value(const char* section, const char* key, const char* value);
+
+/**
  * @brief Retrieves a string value from the configuration.
  *
  * @param section The section of the configuration.

@@ -7,7 +7,12 @@
 #include "platform_console.h"
 #include "platform_string.h"
 #include "platform_sockets.h"
-#include "platform_shared_memory.h"
+#include "platform_path.h"
+
+// Windows-specific includes for detaching console
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // Project includes
 #include "utils.h"
@@ -18,17 +23,56 @@
 #include "shutdown_handler.h"
 #include "message_types.h"
 #include "version_info.h"
-#include "shared_memory_monitor.h"
 
-#define MAX_PATH_LEN 256
+#define APP_MAX_PATH_LEN 256
 
 // default config file
-static char config_file_name[MAX_PATH_LEN] = "config.ini";
+static char config_file_name[APP_MAX_PATH_LEN] = "config.ini";
 extern void check_watchdog(void);
 
+/**
+ * @brief Detach the application from its console on Windows
+ * 
+ * This allows the application to continue running after the console window is closed.
+ * 
+ * @param stdout_path Path to redirect stdout (NULL for no redirection)
+ * @param stderr_path Path to redirect stderr (NULL for no redirection)
+ * @return true on success, false on failure
+ */
+static bool detach_from_console(const char* stdout_path, const char* stderr_path) {
+#ifdef _WIN32
+    // Redirect stdout if requested
+    if (stdout_path) {
+        FILE* new_stdout = freopen(stdout_path, "a", stdout);
+        if (!new_stdout) {
+            return false;
+        }
+    }
+
+    // Redirect stderr if requested
+    if (stderr_path) {
+        FILE* new_stderr = freopen(stderr_path, "a", stderr);
+        if (!new_stderr) {
+            return false;
+        }
+    }
+
+    // Detach from console - this allows the application to continue running when the console is closed
+    if (!FreeConsole()) {
+        return false;
+    }
+
+    return true;
+#else
+    // Not implemented for non-Windows platforms
+    return false;
+#endif
+}
+
 static void print_usage(const char *progname) {
-    printf("Usage: %s [-c <config_file>]\n", progname);
+    printf("Usage: %s [options]\n", progname);
     printf("  -c <config_file>  Specify the configuration file (optional).\n");
+    printf("  --headless        Run in headless mode without console UI.\n");
     printf("  -h                Show this help message.\n");
 }
 
@@ -42,6 +86,10 @@ static bool parse_args(int argc, char *argv[]) {
                 platform_strcat(config_file_name, config_file, sizeof(config_file_name));
                 return true;  // Successfully parsed config file argument
             }
+        } else if (strcmp(argv[i], "--headless") == 0) {
+            // Set headless mode in configuration
+            set_config_value("app", "headless", "true");
+            return true;
         } else if (strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return false;
@@ -86,6 +134,54 @@ static PlatformErrorCode init_app(void) {
     } else {
         logger_log(LOG_INFO, "Using config file: %s\n", config_file_name);
         logger_log(LOG_INFO, "Configuration: %s", config_load_result);
+    }
+
+    // Check if running in headless mode
+    bool headless = get_config_bool("app", "headless", false);
+    if (headless) {
+        logger_log(LOG_INFO, "Running in headless mode");
+        
+        // Set log destination to file only if not specifically configured otherwise
+        if (!get_config_bool("logger", "log_destination", false)) {
+            set_config_value("logger", "log_destination", "file");
+        }
+        
+        // Ensure we have log file paths set
+        const char* log_file_path = get_config_string("logger", "log_file_path", "logs");
+        const char* stdout_log = NULL;
+        const char* stderr_log = NULL;
+        
+        // Create paths for stdout and stderr redirection
+        char stdout_path[APP_MAX_PATH_LEN] = {0};
+        char stderr_path[APP_MAX_PATH_LEN] = {0};
+        
+        platform_strcat(stdout_path, log_file_path, sizeof(stdout_path));
+        platform_strcat(stdout_path, "/stdout.log", sizeof(stdout_path));
+        platform_strcat(stderr_path, log_file_path, sizeof(stderr_path));
+        platform_strcat(stderr_path, "/stderr.log", sizeof(stderr_path));
+        
+        stdout_log = stdout_path;
+        stderr_log = stderr_path;
+        
+        logger_log(LOG_INFO, "Detaching from console. Console window can now be closed.");
+        logger_log(LOG_INFO, "Redirecting stdout to %s", stdout_log);
+        logger_log(LOG_INFO, "Redirecting stderr to %s", stderr_log);
+        
+        // Flush the logs before detaching
+        logger_flush();
+        
+        // Print message to console before detaching
+        printf("Application is now running in headless mode.\n");
+        printf("The console window can be closed.\n");
+        printf("Stdout is redirected to: %s\n", stdout_log);
+        printf("Stderr is redirected to: %s\n", stderr_log);
+        printf("Application logs are available in: %s\n", log_file_path);
+        
+        // Detach from console - allows application to continue when console is closed
+        if (!detach_from_console(stdout_log, stderr_log)) {
+            logger_log(LOG_ERROR, "Failed to detach from console");
+            // Continue anyway, as this is non-critical
+        }
     }
 
     // Initialize logger
@@ -205,8 +301,9 @@ int main(int argc, char *argv[]) {
             // logger_log(LOG_ERROR, "Failed to send demo message");
         }
 
+        // Comment out the heartbeat log message to reduce memory usage
         logger_log(LOG_DEBUG, "HEARTBEAT");
-        sleep_ms(762);
+        sleep_ms(763);
     }
 
     result = cleanup_app();
