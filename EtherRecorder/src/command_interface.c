@@ -171,8 +171,8 @@ static ProcessResult process_send_ack(PlatformSocketHandle sock, CommandContext*
             continue;
         }
         else {
-            logger_log(LOG_ERROR, "Failed to send ACK: %s", 
-                      platform_socket_error_to_string(result));
+            // logger_log(LOG_ERROR, "Failed to send ACK: %s", 
+            //           platform_socket_error_to_string(result));
             return PROCESS_FAIL;
         }
     }
@@ -217,8 +217,8 @@ static void handle_client_connection(PlatformSocketHandle client_sock) {
                 break;
             }
             if (result != PLATFORM_ERROR_SUCCESS) {
-                logger_log(LOG_ERROR, "Socket receive error: %s", 
-                          platform_socket_error_to_string(result));
+                // logger_log(LOG_ERROR, "Socket receive error: %s", 
+                //           platform_socket_error_to_string(result));
                 break;
             }
             if (bytes_received > 0) {

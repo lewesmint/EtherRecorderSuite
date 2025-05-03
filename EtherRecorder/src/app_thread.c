@@ -22,6 +22,7 @@
 #include "app_error.h"
 
 #include "client_manager.h"
+#include "shared_memory_monitor.h"
 #include "command_interface.h"
 #include "log_queue.h"
 #include "logger.h"
@@ -316,9 +317,10 @@ void start_threads(void) {
     ThreadStartInfo threads_to_start[] = {
         { get_logger_thread(), true },             // Logger is essential
         // { get_watchdog_thread(), true },        // Watchdog is essential
-        { get_server_thread(), false },            // Server thread is not essential
-        { get_client_thread(), false },            // Add client thread
-        { get_command_interface_thread(), false }, // Command interface is not essential
+        // { get_server_thread(), false },            // Server thread is not essential
+        // { get_client_thread(), false },            // Add client thread
+        // { get_command_interface_thread(), false }, // Command interface is not essential
+        { get_shared_memory_monitor_thread(), false }, // Shared memory monitor is not essential
         { get_demo_heartbeat_thread(), false }
     };
     
