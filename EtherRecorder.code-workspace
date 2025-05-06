@@ -3,11 +3,14 @@
         {
             "path": "EtherRecorder"
         },
-	        {
+        {
             "path": "PlatformLayer"
         },
         {
             "path": "scripts"
+        },
+        {
+            "path": "test_apps"
         }
     ],
     "settings": {

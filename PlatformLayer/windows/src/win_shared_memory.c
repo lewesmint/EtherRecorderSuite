@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>  // Add this for printf
 
 struct PlatformSharedMemory {
     HANDLE mapping_handle;
@@ -25,13 +26,18 @@ PlatformErrorCode platform_shared_memory_open(
     PlatformSharedMemoryAccess access,
     bool create_new
 ) {
+    printf("platform_shared_memory_open: name=%s, size=%zu, access=%d, create=%d\n", 
+           name, size, access, create_new);
+    
     if (!handle || !name) {
+        printf("Invalid arguments: handle=%p, name=%p\n", (void*)handle, (void*)name);
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
     // Allocate the handle structure
     struct PlatformSharedMemory* shm = (struct PlatformSharedMemory*)malloc(sizeof(struct PlatformSharedMemory));
     if (!shm) {
+        printf("Failed to allocate memory for shared memory handle\n");
         return PLATFORM_ERROR_MEMORY_ALLOC;
     }
 
@@ -57,13 +63,18 @@ PlatformErrorCode platform_shared_memory_open(
         protection = PAGE_READWRITE;
     }
 
+    printf("Windows shared memory parameters: protection=%u, desired_access=%u\n", 
+           protection, desired_access);
+
     if (create_new) {
         // Create a new shared memory segment
         if (size == 0) {
+            printf("Cannot create shared memory with zero size\n");
             free(shm);
             return PLATFORM_ERROR_INVALID_ARGUMENT;
         }
 
+        printf("Creating new shared memory: %s\n", name);
         shm->mapping_handle = CreateFileMappingA(
             INVALID_HANDLE_VALUE,  // Use paging file
             NULL,                  // Default security attributes
@@ -74,6 +85,7 @@ PlatformErrorCode platform_shared_memory_open(
         );
     } else {
         // Open an existing shared memory segment
+        printf("Opening existing shared memory: %s\n", name);
         shm->mapping_handle = OpenFileMappingA(
             desired_access,        // Read/write access
             FALSE,                 // Do not inherit the name
@@ -83,6 +95,21 @@ PlatformErrorCode platform_shared_memory_open(
 
     if (shm->mapping_handle == NULL) {
         DWORD error = GetLastError();
+        printf("Failed to %s shared memory '%s': Windows error %u\n", 
+               create_new ? "create" : "open", name, error);
+        
+        char error_msg[256];
+        FormatMessageA(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            error_msg,
+            sizeof(error_msg),
+            NULL
+        );
+        printf("Windows error message: %s\n", error_msg);
+        
         free(shm);
         
         if (error == ERROR_FILE_NOT_FOUND) {
@@ -91,6 +118,9 @@ PlatformErrorCode platform_shared_memory_open(
         return PLATFORM_ERROR_SYSTEM;
     }
 
+    printf("Successfully %s shared memory '%s'\n", 
+           create_new ? "created" : "opened", name);
+    
     *handle = shm;
     return PLATFORM_ERROR_SUCCESS;
 }

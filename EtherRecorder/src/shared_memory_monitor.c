@@ -155,7 +155,8 @@ static PlatformErrorCode open_and_map_shared_memory(
     PlatformSharedMemoryHandle* handle,
     void** mapped_data
 ) {
-    logger_log(LOG_INFO, "Attempting to open shared memory '%s'", config->name);
+    logger_log(LOG_INFO, "Attempting to open shared memory '%s' (create=%s, access=%d, size=%zu)", 
+              config->name, config->create ? "true" : "false", config->access, config->data_size);
     
     PlatformErrorCode result = platform_shared_memory_open(
         handle,
@@ -166,8 +167,25 @@ static PlatformErrorCode open_and_map_shared_memory(
     );
     
     if (result != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_WARN, "Failed to open shared memory '%s': error %d", 
-                 config->name, result);
+        char error_msg[256];
+        platform_get_error_message_from_code(result, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Failed to open shared memory '%s': error %d (%s)", 
+                 config->name, result, error_msg);
+        
+        // Get Windows-specific error
+        DWORD win_error = GetLastError();
+        char win_error_msg[256];
+        FormatMessageA(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            win_error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            win_error_msg,
+            sizeof(win_error_msg),
+            NULL
+        );
+        logger_log(LOG_ERROR, "Windows error: %d (%s)", win_error, win_error_msg);
+        
         return result;
     }
     
@@ -176,14 +194,16 @@ static PlatformErrorCode open_and_map_shared_memory(
         size_t actual_size = 0;
         result = platform_shared_memory_get_size(*handle, &actual_size);
         if (result != PLATFORM_ERROR_SUCCESS) {
-            logger_log(LOG_ERROR, "Failed to get shared memory size: error %d", result);
+            logger_log(LOG_ERROR, "Failed to get shared memory size for '%s': error %d", 
+                     config->name, result);
             platform_shared_memory_close(*handle);
             *handle = NULL;
             return result;
         }
         
         config->data_size = actual_size;
-        logger_log(LOG_INFO, "Auto-detected shared memory size: %zu bytes", config->data_size);
+        logger_log(LOG_INFO, "Auto-detected shared memory size for '%s': %zu bytes", 
+                 config->name, config->data_size);
     }
     
     // Map the shared memory
