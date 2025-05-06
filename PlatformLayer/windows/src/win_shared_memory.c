@@ -6,6 +6,7 @@
 #include "platform_error.h"
 
 #include <windows.h>
+#include <winternl.h>  // For NTSTATUS and other NT API definitions
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>  // Add this for printf
@@ -204,27 +205,75 @@ PlatformErrorCode platform_shared_memory_get_size(
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    // If we created the segment, we know the size
+    // If we already know the size, return it
     if (handle->size > 0) {
         *size = handle->size;
         return PLATFORM_ERROR_SUCCESS;
     }
 
-    // For existing segments, we need to query the size
-    // Windows doesn't provide a direct API for this, so we'll need to map it first
-    if (!handle->mapped_address) {
-        return PLATFORM_ERROR_NOT_INITIALIZED;
+    // Try to get the size using NtQuerySection if available
+    HMODULE ntdll = LoadLibraryA("ntdll.dll");
+    if (ntdll) {
+        typedef NTSTATUS (NTAPI *NtQuerySectionFn)(
+            HANDLE SectionHandle,
+            ULONG SectionInformationClass,
+            PVOID SectionInformation,
+            SIZE_T SectionInformationLength,
+            PSIZE_T ReturnLength
+        );
+
+        NtQuerySectionFn NtQuerySection = (NtQuerySectionFn)GetProcAddress(ntdll, "NtQuerySection");
+        if (NtQuerySection) {
+            // SECTION_BASIC_INFORMATION is 0
+            struct {
+                PVOID BaseAddress;
+                ULONG SectionAttributes;
+                LARGE_INTEGER SectionSize;
+            } sectionInfo;
+            
+            NTSTATUS status = NtQuerySection(
+                handle->mapping_handle,
+                0, // SECTION_BASIC_INFORMATION
+                &sectionInfo,
+                sizeof(sectionInfo),
+                NULL
+            );
+            
+            FreeLibrary(ntdll);
+            
+            if (status == 0) { // STATUS_SUCCESS
+                *size = (size_t)sectionInfo.SectionSize.QuadPart;
+                handle->size = *size; // Cache the size
+                return PLATFORM_ERROR_SUCCESS;
+            }
+        } else {
+            FreeLibrary(ntdll);
+        }
     }
 
-    // Get memory information
-    MEMORY_BASIC_INFORMATION info;
-    if (VirtualQuery(handle->mapped_address, &info, sizeof(info)) == 0) {
+    // Fallback: Map the memory and use VirtualQuery to get the size
+    void* mapped_address = MapViewOfFile(
+        handle->mapping_handle,
+        FILE_MAP_READ,
+        0, 0, 0  // Map the entire file
+    );
+    
+    if (!mapped_address) {
+        DWORD error = GetLastError();
+        printf("Failed to map view of file for size detection: %u\n", error);
         return PLATFORM_ERROR_SYSTEM;
     }
-
-    *size = info.RegionSize;
-    handle->size = info.RegionSize;  // Cache the size
-    return PLATFORM_ERROR_SUCCESS;
+    
+    MEMORY_BASIC_INFORMATION memInfo;
+    if (VirtualQuery(mapped_address, &memInfo, sizeof(memInfo))) {
+        *size = memInfo.RegionSize;
+        handle->size = *size; // Cache the size
+        UnmapViewOfFile(mapped_address);
+        return PLATFORM_ERROR_SUCCESS;
+    }
+    
+    UnmapViewOfFile(mapped_address);
+    return PLATFORM_ERROR_SYSTEM;
 }
 
 PlatformErrorCode platform_shared_memory_get_data(

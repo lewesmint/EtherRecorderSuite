@@ -65,36 +65,98 @@ kernel32.ReleaseMutex.restype = wintypes.BOOL
 
 def create_shared_memory(name, size):
     """Create a new shared memory segment."""
-    handle = kernel32.CreateFileMappingA(
-        INVALID_HANDLE_VALUE,
-        None,
-        PAGE_READWRITE,
-        0,
-        size,
-        name.encode('ascii')
-    )
+    try:
+        print(f"Creating shared memory '{name}' with size {size:,} bytes ({size / (1024*1024):.2f} MB)")
+        
+        # Split size into high and low DWORDs
+        size_high = (size >> 32) & 0xFFFFFFFF
+        size_low = size & 0xFFFFFFFF
+        
+        print(f"Size high DWORD: {size_high}, Size low DWORD: {size_low}")
+        
+        handle = kernel32.CreateFileMappingA(
+            INVALID_HANDLE_VALUE,
+            None,
+            PAGE_READWRITE,
+            size_high,
+            size_low,
+            name.encode('ascii')
+        )
 
-    if not handle:
-        error = ctypes.get_last_error()
-        raise ctypes.WinError(error)
+        if not handle:
+            error = ctypes.get_last_error()
+            error_msg = ctypes.WinError(error)
+            print(f"CreateFileMappingA failed with error code {error}: {error_msg}")
+            raise error_msg
 
-    return handle
+        print(f"Successfully created shared memory with handle: {handle}")
+        return handle
+    except Exception as e:
+        print(f"Unexpected error in create_shared_memory: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def map_shared_memory(handle):
     """Map shared memory into the process address space."""
-    address = kernel32.MapViewOfFile(
-        handle,
-        FILE_MAP_ALL_ACCESS,
-        0,
-        0,
-        0  # Map the entire file
-    )
+    try:
+        print(f"Attempting to map shared memory with handle: {handle}")
+        address = kernel32.MapViewOfFile(
+            handle,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            0  # Map the entire file
+        )
 
-    if not address:
-        error = ctypes.get_last_error()
-        raise ctypes.WinError(error)
+        if not address:
+            error = ctypes.get_last_error()
+            error_msg = ctypes.WinError(error)
+            print(f"MapViewOfFile failed with error code {error}: {error_msg}")
+            raise error_msg
 
-    return address
+        print(f"Successfully mapped shared memory at address: 0x{address:X}")
+        
+        # Get memory information to report actual size
+        try:
+            class MEMORY_BASIC_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("BaseAddress", ctypes.c_void_p),
+                    ("AllocationBase", ctypes.c_void_p),
+                    ("AllocationProtect", ctypes.c_ulong),
+                    ("RegionSize", ctypes.c_size_t),
+                    ("State", ctypes.c_ulong),
+                    ("Protect", ctypes.c_ulong),
+                    ("Type", ctypes.c_ulong)
+                ]
+            
+            mbi = MEMORY_BASIC_INFORMATION()
+            
+            # Convert address to c_void_p to handle 64-bit addresses properly
+            address_ptr = ctypes.c_void_p(address)
+            
+            result = kernel32.VirtualQuery(
+                address_ptr,
+                ctypes.byref(mbi),
+                ctypes.sizeof(MEMORY_BASIC_INFORMATION)
+            )
+            
+            if result:
+                print(f"Actual allocated memory region size: {mbi.RegionSize:,} bytes ({mbi.RegionSize / (1024*1024):.2f} MB)")
+            else:
+                error = ctypes.get_last_error()
+                print(f"VirtualQuery failed with error code {error}: {ctypes.WinError(error)}")
+        except Exception as e:
+            print(f"Error querying memory information: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return address
+    except Exception as e:
+        print(f"Unexpected error in map_shared_memory: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def unmap_shared_memory(address):
     """Unmap shared memory from the process address space."""
@@ -200,8 +262,6 @@ def modify_memory_regions(address, size, num_regions=5):
 
 def run_test(name, size, cycles, interval, regions_per_cycle):
     """Run the shared memory test."""
-    print(f"Creating shared memory '{name}' with size {size} bytes")
-    
     try:
         # Create shared memory
         shm_handle = create_shared_memory(name, size)
@@ -263,10 +323,10 @@ def main():
     parser = argparse.ArgumentParser(
         description='Large Shared Memory Test with Multiple Region Changes'
     )
-    parser.add_argument('--name', default='ReadWriteBlock',
-                        help='Name of the shared memory segment (default: ReadWriteBlock)')
-    parser.add_argument('--size', type=int, default=2*1024*1024,
-                        help='Size of the shared memory segment in bytes (default: 2MB)')
+    parser.add_argument('--name', default='MySharedMemory',
+                        help='Name of the shared memory segment (default: MySharedMemory)')
+    parser.add_argument('--size', type=int, default=int(1.26 * 1024 * 1024),
+                        help='Size of the shared memory segment in bytes (default: 1.25MB)')
     parser.add_argument('--cycles', type=int, default=0,
                         help='Number of test cycles to run (0 = run indefinitely)')
     parser.add_argument('--interval', type=float, default=5.0,
@@ -278,7 +338,6 @@ def main():
     
     try:
         # Create shared memory
-        print(f"Creating shared memory '{args.name}' with size {args.size} bytes")
         shm_handle = create_shared_memory(args.name, args.size)
         address = map_shared_memory(shm_handle)
         
@@ -341,6 +400,14 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
+
+
+
+
+
+
+
 
 
 

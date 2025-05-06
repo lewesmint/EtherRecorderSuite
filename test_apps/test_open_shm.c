@@ -140,9 +140,9 @@ int main() {
     // Read from shared memory
     printf("Data read from shared memory: %s\n", (CHAR*)pBuf);
     
-    // Write to shared memory
-    strcpy_s((CHAR*)pBuf, actual_size, "Hello from C reader!");
-    printf("Data written to shared memory: %s\n", (CHAR*)pBuf);
+    // Comment out the write operation
+    // strcpy_s((CHAR*)pBuf, actual_size, "Hello from C reader!");
+    // printf("Data written to shared memory: %s\n", (CHAR*)pBuf);
     
     // Keep program running for testing
     printf("Press Enter to exit...\n");
@@ -155,3 +155,4 @@ int main() {
     
     return 0;
 }
+
