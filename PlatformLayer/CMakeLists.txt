@@ -121,6 +121,16 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${HEADER_FILES})
 
 # Add compiler warnings
 if(MSVC)
+    # Set MSVC output formatting options
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase")
+    
+    # Force colored diagnostics
+    add_compile_options(/diagnostics:column)
+    
+    # Set console output encoding to UTF-8
+    add_compile_options(/utf-8)
+    
+    # Adjust warning level with better formatting
     target_compile_options(PlatformLayer PRIVATE 
         /W4 
         /WX      # Treat warnings as errors
@@ -129,6 +139,7 @@ if(MSVC)
         /guard:cf # Control Flow Guard
         /sdl     # Additional security checks
         /MP      # Multi-processor compilation
+        /FC      # Display full path of source code files in diagnostics
     )
 else()
     target_compile_options(PlatformLayer PRIVATE -Wall -Wextra -Wpedantic)

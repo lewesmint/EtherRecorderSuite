@@ -27,28 +27,83 @@ void platform_socket_cleanup(void) {
 }
 
 static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOptions* options) {
+    fprintf(stderr, "\n>>> set_socket_options called - socket: %d, options ptr: %p\n", 
+            (int)sock, (void*)options);
+    
     if (!options) {
+        fprintf(stderr, ">>> No options provided, returning success\n");
         return PLATFORM_ERROR_SUCCESS;
     }
 
-    // Set blocking mode
+    // Determine socket type at the beginning
+    int socket_type;
+    int optlen = sizeof(socket_type);
+    bool is_tcp = false;
+    
+    if (getsockopt(sock, SOL_SOCKET, SO_TYPE, (char*)&socket_type, &optlen) != SOCKET_ERROR) {
+        is_tcp = (socket_type == SOCK_STREAM);
+        fprintf(stderr, ">>> Socket type: %s\n", is_tcp ? "TCP" : "UDP");
+    } else {
+        int error = WSAGetLastError();
+        fprintf(stderr, ">>> Failed to determine socket type (error %d)\n", error);
+        // Continue with default assumption (not TCP)
+    }
+
+    // Log the option values being set
+    fprintf(stderr, ">>> Setting options - blocking: %d, reuse_addr: %d, keep_alive: %d\n", 
+            options->blocking, options->reuse_address, options->keep_alive);
+    fprintf(stderr, ">>> Timeouts - send: %u ms, recv: %u ms\n", 
+            options->send_timeout_ms, options->recv_timeout_ms);
+    fprintf(stderr, ">>> Buffer sizes - send: %u, recv: %u\n",
+            (unsigned int)options->send_buffer_size, (unsigned int)options->recv_buffer_size);
+
+    // Set blocking mode (common to both TCP and UDP)
     u_long mode = options->blocking ? 0 : 1;
     if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
+        int error = WSAGetLastError();
+        fprintf(stderr, "Socket option error: Failed to set blocking mode (error %d)\n", error);
         return PLATFORM_ERROR_SOCKET_OPTION;
     }
+    fprintf(stderr, ">>> Successfully set blocking mode to %d\n", options->blocking);
 
-    // Set reuse address
+    // Set reuse address (common to both TCP and UDP)
     BOOL reuse = options->reuse_address ? TRUE : FALSE;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse)) == SOCKET_ERROR) {
+        int error = WSAGetLastError();
+        fprintf(stderr, "Socket option error: Failed to set SO_REUSEADDR (error %d)\n", error);
         return PLATFORM_ERROR_SOCKET_OPTION;
     }
+    fprintf(stderr, ">>> Successfully set SO_REUSEADDR to %d\n", reuse);
 
-    // Set keep alive
-    BOOL keepalive = options->keep_alive ? TRUE : FALSE;
-    if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char*)&keepalive, sizeof(keepalive)) == SOCKET_ERROR) {
-        return PLATFORM_ERROR_SOCKET_OPTION;
+    // TCP-specific options
+    if (is_tcp) {
+        // Set keep alive (TCP only)
+        if (options->keep_alive) {
+            BOOL keepalive = TRUE;
+            if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char*)&keepalive, sizeof(keepalive)) == SOCKET_ERROR) {
+                int error = WSAGetLastError();
+                fprintf(stderr, "Socket option error: Failed to set SO_KEEPALIVE (error %d)\n", error);
+                return PLATFORM_ERROR_SOCKET_OPTION;
+            }
+            fprintf(stderr, ">>> Successfully set SO_KEEPALIVE to %d\n", keepalive);
+        }
+        
+        // Set TCP_NODELAY (TCP only)
+        if (options->no_delay) {
+            BOOL nodelay = TRUE;
+            if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char*)&nodelay, sizeof(nodelay)) == SOCKET_ERROR) {
+                int error = WSAGetLastError();
+                fprintf(stderr, "Socket option error: Failed to set TCP_NODELAY (error %d)\n", error);
+                return PLATFORM_ERROR_SOCKET_OPTION;
+            }
+            fprintf(stderr, ">>> Successfully set TCP_NODELAY to %d\n", nodelay);
+        }
+    } else {
+        fprintf(stderr, ">>> Skipping TCP-specific options for UDP socket\n");
     }
 
+    // Common options continue here...
+    
     // Set send timeout
     if (options->send_timeout_ms > 0) {
         DWORD timeout = options->send_timeout_ms;
@@ -58,10 +113,12 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
             timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
         }
         if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            fprintf(stderr, "Socket option error: Failed to set SO_SNDTIMEO (error %d)\n", error);
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
     }
-
+    
     // Set receive timeout
     if (options->recv_timeout_ms > 0) {
         DWORD timeout = options->recv_timeout_ms;
@@ -71,21 +128,27 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
             timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
         }
         if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            fprintf(stderr, "Socket option error: Failed to set SO_RCVTIMEO (error %d)\n", error);
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
     }
-
+    
     // Set buffer sizes
     if (options->send_buffer_size > 0) {
         int size = (int)options->send_buffer_size;
         if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char*)&size, sizeof(size)) == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            fprintf(stderr, "Socket option error: Failed to set SO_SNDBUF (error %d)\n", error);
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
     }
-
+    
     if (options->recv_buffer_size > 0) {
         int size = (int)options->recv_buffer_size;
         if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&size, sizeof(size)) == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            fprintf(stderr, "Socket option error: Failed to set SO_RCVBUF (error %d)\n", error);
             return PLATFORM_ERROR_SOCKET_OPTION;
         }
     }
@@ -115,6 +178,7 @@ PlatformErrorCode platform_socket_create(
         return PLATFORM_ERROR_SOCKET_CREATE;
     }
 
+    // In platform_socket_create, before setting options
     if (options) {
         sock->opts = *options;
         PlatformErrorCode err = set_socket_options(sock->fd, options);
@@ -555,4 +619,102 @@ uint32_t platform_ntohl(uint32_t netlong) {
 
 uint32_t platform_htonl(uint32_t hostlong) {
     return htonl(hostlong);
+}
+
+PlatformErrorCode platform_socket_sendto(
+    PlatformSocketHandle handle,
+    const void* buffer,
+    size_t length,
+    const PlatformSocketAddress* dest_addr,
+    size_t* bytes_sent)
+{
+    if (!handle || !buffer || !dest_addr || !bytes_sent) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    *bytes_sent = 0;
+    
+    SOCKADDR_STORAGE addr = {0};
+    int addr_len;
+    
+    // Convert PlatformSocketAddress to SOCKADDR
+    if (dest_addr->is_ipv6) {
+        SOCKADDR_IN6* addr6 = (SOCKADDR_IN6*)&addr;
+        addr6->sin6_family = AF_INET6;
+        addr6->sin6_port = htons(dest_addr->port);
+        InetPtonA(AF_INET6, dest_addr->host, &addr6->sin6_addr);
+        addr_len = sizeof(SOCKADDR_IN6);
+    } else {
+        SOCKADDR_IN* addr4 = (SOCKADDR_IN*)&addr;
+        addr4->sin_family = AF_INET;
+        addr4->sin_port = htons(dest_addr->port);
+        InetPtonA(AF_INET, dest_addr->host, &addr4->sin_addr);
+        addr_len = sizeof(SOCKADDR_IN);
+    }
+    
+    int result = sendto(handle->fd, (const char*)buffer, (int)length, 0, 
+                       (SOCKADDR*)&addr, addr_len);
+    if (result == SOCKET_ERROR) {
+        *bytes_sent = 0;
+        return (WSAGetLastError() == WSAEWOULDBLOCK && !handle->opts.blocking) ? 
+               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_SEND;
+    }
+
+    *bytes_sent = result;
+    handle->stats.bytes_sent += result;
+    handle->stats.packets_sent++;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_socket_recvfrom(
+    PlatformSocketHandle handle,
+    void* buffer,
+    size_t length,
+    PlatformSocketAddress* src_addr,
+    size_t* bytes_received)
+{
+    if (!handle || !buffer || !bytes_received) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    *bytes_received = 0;
+    
+    SOCKADDR_STORAGE addr = {0};
+    int addr_len = sizeof(addr);
+    
+    int result = recvfrom(handle->fd, (char*)buffer, (int)length, 0,
+                         src_addr ? (SOCKADDR*)&addr : NULL, 
+                         src_addr ? &addr_len : NULL);
+    if (result == SOCKET_ERROR) {
+        *bytes_received = 0;
+        return (WSAGetLastError() == WSAEWOULDBLOCK && !handle->opts.blocking) ? 
+               PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_RECEIVE;
+    }
+    
+    // For UDP, 0 bytes is a valid empty datagram, not a shutdown
+    if (result == 0 && handle->is_tcp) {
+        return PLATFORM_ERROR_PEER_SHUTDOWN;
+    }
+    
+    // Fill source address if provided
+    if (src_addr && result >= 0) {
+        if (addr.ss_family == AF_INET6) {
+            SOCKADDR_IN6* addr6 = (SOCKADDR_IN6*)&addr;
+            src_addr->is_ipv6 = true;
+            src_addr->port = ntohs(addr6->sin6_port);
+            InetNtopA(AF_INET6, &addr6->sin6_addr, 
+                     src_addr->host, sizeof(src_addr->host));
+        } else {
+            SOCKADDR_IN* addr4 = (SOCKADDR_IN*)&addr;
+            src_addr->is_ipv6 = false;
+            src_addr->port = ntohs(addr4->sin_port);
+            InetNtopA(AF_INET, &addr4->sin_addr, 
+                     src_addr->host, sizeof(src_addr->host));
+        }
+    }
+
+    *bytes_received = result;
+    handle->stats.bytes_received += result;
+    handle->stats.packets_received++;
+    return PLATFORM_ERROR_SUCCESS;
 }

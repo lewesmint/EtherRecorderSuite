@@ -642,3 +642,103 @@ uint32_t platform_ntohl(uint32_t netlong) {
 uint32_t platform_htonl(uint32_t hostlong) {
     return htonl(hostlong);
 }
+
+PlatformErrorCode platform_socket_sendto(
+    PlatformSocketHandle handle,
+    const void* buffer,
+    size_t length,
+    const PlatformSocketAddress* dest_addr,
+    size_t* bytes_sent)
+{
+    if (!handle || !buffer || !dest_addr || !bytes_sent) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    *bytes_sent = 0;
+    
+    struct sockaddr_storage addr = {0};
+    socklen_t addr_len;
+    
+    // Convert PlatformSocketAddress to sockaddr
+    if (dest_addr->is_ipv6) {
+        struct sockaddr_in6* addr6 = (struct sockaddr_in6*)&addr;
+        addr6->sin6_family = AF_INET6;
+        addr6->sin6_port = htons(dest_addr->port);
+        inet_pton(AF_INET6, dest_addr->host, &addr6->sin6_addr);
+        addr_len = sizeof(struct sockaddr_in6);
+    } else {
+        struct sockaddr_in* addr4 = (struct sockaddr_in*)&addr;
+        addr4->sin_family = AF_INET;
+        addr4->sin_port = htons(dest_addr->port);
+        inet_pton(AF_INET, dest_addr->host, &addr4->sin_addr);
+        addr_len = sizeof(struct sockaddr_in);
+    }
+    
+    ssize_t sent = sendto(handle->fd, buffer, length, 0, 
+                         (struct sockaddr*)&addr, addr_len);
+    if (sent < 0) {
+        if (errno == EWOULDBLOCK && !handle->opts.blocking) {
+            return PLATFORM_ERROR_WOULD_BLOCK;
+        }
+        return PLATFORM_ERROR_SOCKET_SEND;
+    }
+
+    *bytes_sent = (size_t)sent;
+    handle->stats.bytes_sent += sent;
+    handle->stats.packets_sent++;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+PlatformErrorCode platform_socket_recvfrom(
+    PlatformSocketHandle handle,
+    void* buffer,
+    size_t length,
+    PlatformSocketAddress* src_addr,
+    size_t* bytes_received)
+{
+    if (!handle || !buffer || !bytes_received) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    *bytes_received = 0;
+    
+    struct sockaddr_storage addr = {0};
+    socklen_t addr_len = sizeof(addr);
+    
+    ssize_t received = recvfrom(handle->fd, buffer, length, 0,
+                               src_addr ? (struct sockaddr*)&addr : NULL, 
+                               src_addr ? &addr_len : NULL);
+    if (received < 0) {
+        if (errno == EWOULDBLOCK && !handle->opts.blocking) {
+            return PLATFORM_ERROR_WOULD_BLOCK;
+        }
+        return PLATFORM_ERROR_SOCKET_RECEIVE;
+    }
+    
+    // For UDP, 0 bytes is a valid empty datagram, not a shutdown
+    if (received == 0 && handle->is_tcp) {
+        return PLATFORM_ERROR_PEER_SHUTDOWN;
+    }
+    
+    // Fill source address if provided
+    if (src_addr && received >= 0) {
+        if (addr.ss_family == AF_INET6) {
+            struct sockaddr_in6* addr6 = (struct sockaddr_in6*)&addr;
+            src_addr->is_ipv6 = true;
+            src_addr->port = ntohs(addr6->sin6_port);
+            inet_ntop(AF_INET6, &addr6->sin6_addr, 
+                     src_addr->host, sizeof(src_addr->host));
+        } else {
+            struct sockaddr_in* addr4 = (struct sockaddr_in*)&addr;
+            src_addr->is_ipv6 = false;
+            src_addr->port = ntohs(addr4->sin_port);
+            inet_ntop(AF_INET, &addr4->sin_addr, 
+                     src_addr->host, sizeof(src_addr->host));
+        }
+    }
+
+    *bytes_received = (size_t)received;
+    handle->stats.bytes_received += received;
+    handle->stats.packets_received++;
+    return PLATFORM_ERROR_SUCCESS;
+}

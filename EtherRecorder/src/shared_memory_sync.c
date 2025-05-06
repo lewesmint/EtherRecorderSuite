@@ -3,6 +3,7 @@
 #include <string.h>
 #include "shared_memory_sync.h"
 #include "platform_sockets.h"
+#include "platform_error.h"
 #include "platform_shared_memory.h"
 #include "platform_time.h"
 #include "platform_string.h"
@@ -12,12 +13,6 @@
 #include "app_config.h"
 #include "shutdown_handler.h"
 
-// Stub implementation - this would need to be properly implemented
-void shared_memory_udp_sender_callback_with_offset(const void* data, size_t size, uint32_t offset) {
-    (void)data;
-    // Stub implementation
-    logger_log(LOG_DEBUG, "Would send %zu bytes at offset %u", size, offset);
-}
 
 // Message header structure
 #pragma pack(1)
@@ -60,8 +55,16 @@ static void* udp_listener_thread(void* arg);
 static PlatformErrorCode apply_memory_update(const uint8_t* message, size_t message_size);
 static PlatformErrorCode send_udp_message(SharedMemorySyncMessageType type, const void* data, size_t size);
 
+// Add this function to check and log socket state
+static void log_socket_state(const char* function_name) {
+    logger_log(LOG_DEBUG, "[%s] UDP socket state: %p", function_name, (void*)udp_socket);
+}
+
 PlatformErrorCode shared_memory_sync_init(const char* config_section) {
+    log_socket_state("shared_memory_sync_init (start)");
+    
     if (!config_section) {
+        logger_log(LOG_ERROR, "NULL config_section passed to shared_memory_sync_init");
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
@@ -95,8 +98,17 @@ PlatformErrorCode shared_memory_sync_init(const char* config_section) {
     // Initialize socket subsystem
     PlatformErrorCode err = platform_socket_init();
     if (err != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to initialize socket subsystem: %d", err);
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Failed to initialize socket subsystem: %d (%s)", err, error_msg);
         return err;
+    }
+
+    // Make sure socket handle is NULL before creating
+    if (udp_socket != NULL) {
+        logger_log(LOG_WARN, "UDP socket already initialized, closing existing socket");
+        platform_socket_close(udp_socket);
+        udp_socket = NULL;
     }
 
     // Set up UDP socket for both sending and receiving
@@ -108,10 +120,17 @@ PlatformErrorCode shared_memory_sync_init(const char* config_section) {
 
     err = platform_socket_create(&udp_socket, false, &sock_opts); // false = UDP
     if (err != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to create UDP socket: %d", err);
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Failed to create UDP socket: %d (%s)", err, error_msg);
         platform_socket_cleanup();
         return err;
     }
+    
+    log_socket_state("shared_memory_sync_init (after create)");
+
+    // Add debug log to verify socket was created
+    logger_log(LOG_DEBUG, "UDP socket created successfully: %p", (void*)udp_socket);
 
     // Bind socket to receive data
     PlatformSocketAddress bind_addr = {
@@ -177,10 +196,13 @@ PlatformErrorCode shared_memory_sync_init(const char* config_section) {
     // }
 
     logger_log(LOG_INFO, "Shared memory sync initialized successfully");
+    log_socket_state("shared_memory_sync_init (end)");
     return PLATFORM_ERROR_SUCCESS;
 }
 
 void shared_memory_sync_shutdown(void) {
+    log_socket_state("shared_memory_sync_shutdown (start)");
+    
     // Clean up writer shared memory if open
     if (writer_shm) {
         // platform_shared_memory_unmap(writer_shm);
@@ -197,7 +219,8 @@ void shared_memory_sync_shutdown(void) {
 
     // Clean up socket subsystem
     platform_socket_cleanup();
-
+    
+    log_socket_state("shared_memory_sync_shutdown (end)");
     logger_log(LOG_INFO, "Shared memory sync shutdown completed");
 }
 
@@ -214,20 +237,25 @@ ThreadConfig* get_udp_listener_thread(void) {
 
 void shared_memory_udp_sender_callback(const void* data, size_t size) {
     if (!data || size == 0 || !udp_socket) {
+        logger_log(LOG_WARN, "Invalid parameters in udp_sender_callback: data=%p, size=%zu, socket=%p", 
+                  data, size, (void*)udp_socket);
         return;
     }
 
     // Only send if we're in read mode
     if (sync_config.access != PLATFORM_SHM_READ && sync_config.access != PLATFORM_SHM_READWRITE) {
+        logger_log(LOG_DEBUG, "Not sending update - access mode not READ or READWRITE (mode=%d)", 
+                  sync_config.access);
         return;
     }
 
     // Send memory update
+    logger_log(LOG_DEBUG, "Attempting to send memory update (%zu bytes)", size);
     PlatformErrorCode err = send_udp_message(SYNC_MSG_UPDATE, data, size);
     if (err != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_WARN, "Failed to send memory update: %d", err);
+        logger_log(LOG_WARN, "Failed to send memory update: error=%d", err);
     } else {
-        logger_log(LOG_DEBUG, "Memory update sent (%zu bytes)", size);
+        logger_log(LOG_DEBUG, "Memory update sent successfully (%zu bytes)", size);
     }
 }
 
@@ -235,12 +263,19 @@ static void* udp_listener_thread(void* arg) {
     ThreadConfig* thread_config = (ThreadConfig*)arg;
     
     logger_log(LOG_INFO, "UDP listener thread starting");
+    log_socket_state("udp_listener_thread (start)");
     thread_registry_update_state(thread_config->label, THREAD_STATE_RUNNING);
     
     uint8_t buffer[8192];  // Buffer for receiving UDP messages
     
     // Loop until shutdown
     while (!shutdown_signalled()) {
+        // Periodically log socket state
+        static uint32_t log_counter = 0;
+        if (++log_counter % 1000 == 0) {
+            log_socket_state("udp_listener_thread (periodic)");
+        }
+        
         size_t bytes_received;
         PlatformSocketAddress sender;
         
@@ -282,18 +317,6 @@ static void* udp_listener_thread(void* arg) {
                         }
                         break;
                         
-                    case SYNC_MSG_FULL_SYNC:
-                        logger_log(LOG_INFO, "Received FULL_SYNC message (seq: %u)", header->seq_num);
-                        // Similar to UPDATE but we treat it as a full replacement
-                        if (sync_config.access == PLATFORM_SHM_WRITE || 
-                            sync_config.access == PLATFORM_SHM_READWRITE) {
-                            // err = apply_memory_update(buffer, bytes_received);
-                            // if (err != PLATFORM_ERROR_SUCCESS) {
-                            //     logger_log(LOG_ERROR, "Failed to apply full sync: %d", err);
-                            // }
-                        }
-                        break;
-                        
                     case SYNC_MSG_ACK:
                         logger_log(LOG_DEBUG, "Received ACK message (seq: %u)", header->seq_num);
                         // Handle acknowledgment (could update statistics or retry queue)
@@ -322,6 +345,7 @@ static void* udp_listener_thread(void* arg) {
     }
     
     thread_registry_update_state(thread_config->label, THREAD_STATE_TERMINATED);
+    log_socket_state("udp_listener_thread (end)");
     logger_log(LOG_INFO, "UDP listener thread stopping");
     return NULL;
 }
@@ -363,7 +387,6 @@ static PlatformErrorCode apply_memory_update(const uint8_t* message, size_t mess
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
     
-    
     // Apply the update
     memcpy((uint8_t*)writer_data + offset, message + data_offset, data_len);
          
@@ -372,18 +395,37 @@ static PlatformErrorCode apply_memory_update(const uint8_t* message, size_t mess
 }
 
 static PlatformErrorCode send_udp_message(SharedMemorySyncMessageType type, const void* data, size_t size) {
+    log_socket_state("send_udp_message");
+    
     if (!udp_socket) {
+        logger_log(LOG_ERROR, "UDP socket not initialized in send_udp_message");
         return PLATFORM_ERROR_NOT_INITIALIZED;
     }
+    
+    // Check if socket is still valid
+    bool is_connected = false;
+    PlatformErrorCode err = platform_socket_is_connected(udp_socket, &is_connected);
+    if (err != PLATFORM_ERROR_SUCCESS || !is_connected) {
+        logger_log(LOG_ERROR, "UDP socket is not connected or invalid");
+        return PLATFORM_ERROR_NOT_INITIALIZED;
+    }
+    
+    // Log message details
+    logger_log(LOG_DEBUG, "Preparing to send UDP message: type=%d, size=%zu, name='%s'", 
+               type, size, sync_config.name);
     
     // Calculate total message size with header
     size_t name_len = strlen(sync_config.name);
     size_t header_size = sizeof(SyncMessageHeader) + name_len + sizeof(uint32_t) + sizeof(uint32_t);
     size_t total_size = header_size + size;
     
+    logger_log(LOG_DEBUG, "Message details: name_len=%zu, header_size=%zu, total_size=%zu", 
+               name_len, header_size, total_size);
+    
     // Allocate buffer for message
     uint8_t* message = (uint8_t*)malloc(total_size);
     if (!message) {
+        logger_log(LOG_ERROR, "Failed to allocate memory for UDP message (size=%zu)", total_size);
         return PLATFORM_ERROR_OUT_OF_MEMORY;
     }
     
@@ -408,21 +450,69 @@ static PlatformErrorCode send_udp_message(SharedMemorySyncMessageType type, cons
         memcpy(message + header_size, data, size);
     }
     
+    // Log destination details
+    logger_log(LOG_DEBUG, "Sending to %s:%d, socket=%p", 
+               sync_config.hostname, sync_config.port, (void*)udp_socket);
+    
     // Send the message
-    // size_t sent;
-    // PlatformErrorCode err = platform_socket_send_to(udp_socket, message, total_size, &sent, &remote_addr);
+    size_t sent;
+    err = platform_socket_send(udp_socket, message, total_size, &sent);
+    
+    // Get detailed error information if send failed
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        
+        // Get system-specific error
+        DWORD win_error = GetLastError();
+        char win_error_msg[256];
+        FormatMessageA(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            win_error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            win_error_msg,
+            sizeof(win_error_msg),
+            NULL
+        );
+        
+        logger_log(LOG_ERROR, "UDP send failed: error %d (%s)", err, error_msg);
+        logger_log(LOG_ERROR, "System error: %d (%s)", win_error, win_error_msg);
+        
+        // Clean up buffer
+        free(message);
+        return err;
+    }
+    
+    logger_log(LOG_DEBUG, "UDP send result: sent=%zu of %zu bytes", sent, total_size);
     
     // Clean up buffer
     free(message);
     
-    // if (err != PLATFORM_ERROR_SUCCESS) {
-    //     return err;
-    // }
-    
-    // if (sent != total_size) {
-    //     logger_log(LOG_WARN, "Incomplete UDP send: %zu of %zu bytes", sent, total_size);
-    //     return PLATFORM_ERROR_UNKNOWN;
-    // }
+    if (sent != total_size) {
+        logger_log(LOG_WARN, "Incomplete UDP send: %zu of %zu bytes", sent, total_size);
+        return PLATFORM_ERROR_UNKNOWN;
+    }
     
     return PLATFORM_ERROR_SUCCESS;
+}
+
+// Stub implementation - this would need to be properly implemented
+void shared_memory_udp_sender_callback_with_offset(const void* data, size_t size, uint32_t offset) {
+    if (!data || size == 0) {
+        return;
+    }
+
+    // Only send if we're in read mode
+    if (sync_config.access != PLATFORM_SHM_READ && sync_config.access != PLATFORM_SHM_READWRITE) {
+        return;
+    }
+
+    // Send memory update with offset
+    PlatformErrorCode err = send_udp_message(SYNC_MSG_UPDATE, data, size);
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        logger_log(LOG_WARN, "Failed to send memory update: %d", err);
+    } else {
+        logger_log(LOG_DEBUG, "Memory update sent (%zu bytes at offset %u)", size, offset);
+    }
 }

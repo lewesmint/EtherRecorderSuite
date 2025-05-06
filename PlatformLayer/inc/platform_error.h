@@ -113,10 +113,17 @@ typedef struct PlatformError {
 int32_t platform_get_last_error(PlatformErrorDomain domain);
 
 /**
- * @brief Get detailed error information
+ * @brief Get detailed error information from the last error
+ * @param[out] error Error information structure to fill
+ * @return PlatformErrorCode indicating success of the operation
+ */
+PlatformErrorCode platform_get_error(PlatformError* error);
+
+/**
+ * @brief Get detailed error information for a specific domain
  * @param[in] domain Error domain to check
  * @param[out] error Error information structure to fill
- * @return PlatformResult indicating success of the operation
+ * @return PlatformErrorCode indicating success of the operation
  */
 PlatformErrorCode platform_get_error_info(PlatformErrorDomain domain, PlatformError* error);
 

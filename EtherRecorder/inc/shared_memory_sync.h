@@ -14,9 +14,8 @@
 typedef enum {
     SYNC_MSG_INIT = 1,     // Initial sync request
     SYNC_MSG_UPDATE = 2,   // Memory update
-    SYNC_MSG_FULL_SYNC = 3, // Full memory sync
-    SYNC_MSG_ACK = 4,      // Acknowledgment
-    SYNC_MSG_HEARTBEAT = 5 // Heartbeat message
+    SYNC_MSG_ACK = 3,      // Acknowledgment
+    SYNC_MSG_HEARTBEAT = 4 // Heartbeat message
 } SharedMemorySyncMessageType;
 
 // Configuration for shared memory sync

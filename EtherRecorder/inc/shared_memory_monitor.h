@@ -7,6 +7,7 @@
 
 #include "platform_shared_memory.h"
 #include "platform_error.h"
+#include "platform_sockets.h"
 #include "app_thread.h"
 
 // Network forwarding configuration
@@ -30,6 +31,10 @@ typedef struct {
     bool wait_indefinitely;
     int block_index;
     SharedMemoryForwardingConfig forwarding;
+    
+    // Add socket information
+    PlatformSocketHandle socket;
+    bool socket_initialized;
 } SharedMemoryMonitorConfig;
 
 // Initialize a shared memory monitor configuration with defaults

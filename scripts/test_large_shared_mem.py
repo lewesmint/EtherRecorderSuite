@@ -13,6 +13,8 @@ import argparse
 import random
 import struct
 
+from report_shared_mem import get_section_size
+
 # Windows API constants
 INVALID_HANDLE_VALUE = -1
 PAGE_READWRITE = 0x04
@@ -341,8 +343,19 @@ def main():
         shm_handle = create_shared_memory(args.name, args.size)
         address = map_shared_memory(shm_handle)
         
+        # Get actual size of mapped memory
+        actual_size = get_section_size(shm_handle, True)
+        if actual_size is None or actual_size == 0:
+            print("Warning: Could not determine actual size, using system page size")
+            actual_size = 4096  # Default to system page size
+        
+        if actual_size < args.size:
+            print(f"Warning: Actual mapped size ({actual_size} bytes) is less than requested size ({args.size} bytes)")
+            print(f"Adjusting operations to use actual size: {actual_size} bytes")
+            args.size = actual_size
+        
         # Initialize memory with zeros
-        print("Initializing memory with zeros")
+        print(f"Initializing memory with zeros (size: {args.size} bytes)")
         ctypes.memset(address, 0, args.size)
         
         # Create mutex
@@ -400,6 +413,7 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
 
 
 

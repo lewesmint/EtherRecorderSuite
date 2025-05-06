@@ -231,6 +231,38 @@ uint32_t platform_ntohl(uint32_t netlong);
 
 uint32_t platform_htonl(uint32_t hostlong);
 
+/**
+ * @brief Send data to a specific address (for UDP)
+ * @param[in] handle Socket handle
+ * @param[in] buffer Data buffer
+ * @param[in] length Buffer length
+ * @param[in] dest_addr Destination address
+ * @param[out] bytes_sent Pointer to store number of bytes sent
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_socket_sendto(
+    PlatformSocketHandle handle,
+    const void* buffer,
+    size_t length,
+    const PlatformSocketAddress* dest_addr,
+    size_t* bytes_sent);
+
+/**
+ * @brief Receive data and get the source address (for UDP)
+ * @param[in] handle Socket handle
+ * @param[out] buffer Buffer to store received data
+ * @param[in] length Buffer length
+ * @param[out] src_addr Source address (can be NULL if not needed)
+ * @param[out] bytes_received Pointer to store number of bytes received
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_socket_recvfrom(
+    PlatformSocketHandle handle,
+    void* buffer,
+    size_t length,
+    PlatformSocketAddress* src_addr,
+    size_t* bytes_received);
+
 #ifdef __cplusplus
 }
 #endif

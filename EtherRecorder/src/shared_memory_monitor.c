@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,26 +21,28 @@ typedef struct {
     uint32_t length;
 } ChangeRegion;
 
-// Detect multiple distinct changed regions in memory
+// Define a linked list node for change regions
+typedef struct ChangeRegionNode {
+    ChangeRegion region;
+    struct ChangeRegionNode* next;
+} ChangeRegionNode;
+
+// Detect multiple distinct changed regions in memory using a linked list
 static int detect_memory_changes(
     const void* current, 
     const void* previous, 
     size_t size, 
-    ChangeRegion* regions, 
-    int max_regions
+    ChangeRegionNode** regions_head
 ) {
-    // Sanity check - max_regions should never exceed half the buffer size
-    if (max_regions > size / 2) {
-        logger_log(LOG_WARN, "Max regions (%d) exceeds half buffer size (%zu), capping at %zu", 
-                  max_regions, size, size / 2);
-        max_regions = (int)(size / 2);
-    }
-
     const uint8_t* curr_bytes = (const uint8_t*)current;
     const uint8_t* prev_bytes = (const uint8_t*)previous;
     int region_count = 0;
     bool in_region = false;
     uint32_t region_start = 0;
+    
+    // Initialize the head pointer to NULL
+    *regions_head = NULL;
+    ChangeRegionNode* last_node = NULL;
     
     // Scan through memory byte by byte
     for (uint32_t i = 0; i < size; i++) {
@@ -55,17 +58,37 @@ static int detect_memory_changes(
             in_region = false;
             uint32_t region_length = i - region_start;
             
-            // Record the region
-            if (region_count < max_regions) {
-                regions[region_count].offset = region_start;
-                regions[region_count].length = region_length;
-                region_count++;
-            } else {
-                // We've hit the maximum number of regions we can track
-                logger_log(LOG_ERROR, "Too many changed regions detected (%d+), possible data corruption", 
-                          max_regions);
+            // Create a new node
+            ChangeRegionNode* new_node = (ChangeRegionNode*)malloc(sizeof(ChangeRegionNode));
+            if (!new_node) {
+                logger_log(LOG_ERROR, "Failed to allocate memory for change region node");
+                
+                // Clean up any previously allocated nodes
+                ChangeRegionNode* node = *regions_head;
+                while (node) {
+                    ChangeRegionNode* next = node->next;
+                    free(node);
+                    node = next;
+                }
+                
+                *regions_head = NULL;
                 return -1;  // Error condition
             }
+            
+            // Initialize the new node
+            new_node->region.offset = region_start;
+            new_node->region.length = region_length;
+            new_node->next = NULL;
+            
+            // Add to the list
+            if (!*regions_head) {
+                *regions_head = new_node;
+            } else if (last_node) {
+                last_node->next = new_node;
+            }
+            
+            last_node = new_node;
+            region_count++;
         }
     }
     
@@ -73,15 +96,36 @@ static int detect_memory_changes(
     if (in_region) {
         uint32_t region_length = (uint32_t)(size - region_start);
         
-        if (region_count < max_regions) {
-            regions[region_count].offset = region_start;
-            regions[region_count].length = region_length;
-            region_count++;
-        } else {
-            logger_log(LOG_ERROR, "Too many changed regions detected (%d+), possible data corruption", 
-                      max_regions);
+        // Create a new node
+        ChangeRegionNode* new_node = (ChangeRegionNode*)malloc(sizeof(ChangeRegionNode));
+        if (!new_node) {
+            logger_log(LOG_ERROR, "Failed to allocate memory for change region node");
+            
+            // Clean up any previously allocated nodes
+            ChangeRegionNode* node = *regions_head;
+            while (node) {
+                ChangeRegionNode* next = node->next;
+                free(node);
+                node = next;
+            }
+            
+            *regions_head = NULL;
             return -1;  // Error condition
         }
+        
+        // Initialize the new node
+        new_node->region.offset = region_start;
+        new_node->region.length = region_length;
+        new_node->next = NULL;
+        
+        // Add to the list
+        if (!*regions_head) {
+            *regions_head = new_node;
+        } else if (last_node) {
+            last_node->next = new_node;
+        }
+        
+        region_count++;
     }
     
     return region_count;
@@ -144,8 +188,13 @@ PlatformErrorCode shared_memory_monitor_init_config(SharedMemoryMonitorConfig* c
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
 
-    // // Start with default configuration
-    // *config = monitor_config;
+    // Start with default configuration
+    *config = default_monitor_config;
+    
+    // Initialize socket fields
+    config->socket = NULL;
+    config->socket_initialized = false;
+    
     return PLATFORM_ERROR_SUCCESS;
 }
 
@@ -222,6 +271,286 @@ static PlatformErrorCode open_and_map_shared_memory(
     return PLATFORM_ERROR_SUCCESS;
 }
 
+// Initialize socket for a shared memory monitor
+static PlatformErrorCode initialize_monitor_socket(SharedMemoryMonitorConfig* config) {
+    if (!config) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    logger_log(LOG_DEBUG, "Initializing socket for '%s'", config->name);
+    
+    // If socket already initialized, close it first
+    if (config->socket_initialized && config->socket) {
+        logger_log(LOG_DEBUG, "Closing existing socket for '%s'", config->name);
+        platform_socket_close(config->socket);
+        config->socket = NULL;
+        config->socket_initialized = false;
+    }
+    
+    // Set up UDP socket
+    PlatformSocketOptions sock_opts = {0}; // Initialize all fields to zero first
+    sock_opts.blocking = false;             // Non-blocking mode
+    sock_opts.recv_timeout_ms = 100;        // Short timeout for receive operations
+    sock_opts.reuse_address = true;         // Allow socket reuse
+    
+    logger_log(LOG_DEBUG, "Creating UDP socket for '%s' with options: blocking=%d, timeout=%u, reuse=%d", 
+              config->name, sock_opts.blocking, sock_opts.recv_timeout_ms, sock_opts.reuse_address);
+    
+    PlatformErrorCode err = platform_socket_create(&config->socket, false, &sock_opts); // false = UDP
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Failed to create UDP socket for '%s': %d (%s)", 
+                  config->name, err, error_msg);
+        
+        // Get system-specific error
+        DWORD win_error = GetLastError();
+        char win_error_msg[256];
+        FormatMessageA(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            win_error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            win_error_msg,
+            sizeof(win_error_msg),
+            NULL
+        );
+        logger_log(LOG_ERROR, "System error: %d (%s)", win_error, win_error_msg);
+        
+        // After socket creation fails:
+        logger_log(LOG_ERROR, "Socket creation details - handle: %p, config ptr: %p", 
+                  (void*)config->socket, (void*)config);
+        
+        return err;
+    }
+    
+    logger_log(LOG_DEBUG, "UDP socket created successfully for '%s': %p", 
+              config->name, (void*)config->socket);
+    
+    // // Verify socket is valid
+    // bool is_valid = false;
+    // err = platform_socket_is_valid(config->socket, &is_valid);
+    // if (err != PLATFORM_ERROR_SUCCESS || !is_valid) {
+    //     logger_log(LOG_ERROR, "Socket created but not valid for '%s'", config->name);
+    //     platform_socket_close(config->socket);
+    //     config->socket = NULL;
+    //     return PLATFORM_ERROR_INVALID_HANDLE;
+    // }
+    
+    config->socket_initialized = true;
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+// Send memory update via UDP
+static PlatformErrorCode send_memory_update(
+    SharedMemoryMonitorConfig* config,
+    const void* data,
+    size_t size,
+    uint32_t offset
+) {
+    if (!config || !data || size == 0) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Make sure socket is initialized
+    if (!config->socket_initialized || !config->socket) {
+        logger_log(LOG_WARN, "Socket not initialized for '%s', initializing now", config->name);
+        PlatformErrorCode err = initialize_monitor_socket(config);
+        if (err != PLATFORM_ERROR_SUCCESS) {
+            logger_log(LOG_ERROR, "Failed to initialize socket, will retry next time");
+            return err;
+        }
+    }
+    
+    // Define message header structure
+    #pragma pack(push, 1)  // Ensure no padding in the structure
+    typedef struct {
+        uint8_t msg_type;
+        uint16_t seq_num;
+        uint8_t name_len;
+        char block_name[64];  // Fixed size for simplicity
+        uint32_t offset;
+        uint32_t length;
+    } MessageHeader;
+    #pragma pack(pop)
+    
+    static uint16_t sequence_counter = 0;
+    
+    // Calculate total message size
+    size_t header_size = sizeof(MessageHeader);
+    size_t total_size = header_size + size;
+    
+    // Allocate buffer for message
+    uint8_t* message = (uint8_t*)malloc(total_size);
+    if (!message) {
+        logger_log(LOG_ERROR, "Failed to allocate memory for UDP message (size=%zu)", total_size);
+        return PLATFORM_ERROR_OUT_OF_MEMORY;
+    }
+    
+    // Fill in header
+    MessageHeader* header = (MessageHeader*)message;
+    memset(header, 0, sizeof(MessageHeader));  // Initialize all fields to zero
+    
+    header->msg_type = SYNC_MSG_UPDATE;  // Use UPDATE message type
+    header->seq_num = ++sequence_counter;
+    
+    // Set block name
+    size_t name_len = strlen(config->name);
+    if (name_len > sizeof(header->block_name) - 1) {
+        name_len = sizeof(header->block_name) - 1;
+    }
+    header->name_len = (uint8_t)name_len;
+    memcpy(header->block_name, config->name, name_len);
+    // No need to null-terminate since we're using name_len
+    
+    header->offset = offset;
+    header->length = (uint32_t)size;
+    
+    // Log the raw header bytes for debugging
+    logger_log(LOG_DEBUG, "Header bytes: %02X %02X %02X %02X %02X %02X %02X %02X",
+              message[0], message[1], message[2], message[3], 
+              message[4], message[5], message[6], message[7]);
+    
+    // Fill in data
+    memcpy(message + header_size, data, size);
+    
+    // Set up remote address
+    PlatformSocketAddress remote_addr = {
+        .port = config->forwarding.port,
+        .is_ipv6 = false
+    };
+    strncpy(remote_addr.host, config->forwarding.hostname, sizeof(remote_addr.host) - 1);
+    remote_addr.host[sizeof(remote_addr.host) - 1] = '\0';
+    
+    // Send the message
+    size_t sent;
+    PlatformErrorCode err = platform_socket_sendto(
+        config->socket, 
+        message, 
+        total_size, 
+        &remote_addr,
+        &sent
+    );
+    
+    // Log the message details
+    logger_log(LOG_DEBUG, "Sending UDP message: type=%d, seq=%u, block='%s', offset=%u, len=%u, total_size=%zu",
+              header->msg_type, header->seq_num, config->name, header->offset, header->length, total_size);
+    
+    // Clean up buffer
+    free(message);
+    
+    // Check for errors
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "UDP send failed for '%s': error %d (%s)", 
+                  config->name, err, error_msg);
+        return err;
+    }
+    
+    if (sent != total_size) {
+        logger_log(LOG_WARN, "Incomplete UDP send for '%s': %zu of %zu bytes", 
+                  config->name, sent, total_size);
+        return PLATFORM_ERROR_UNKNOWN;
+    }
+    
+    logger_log(LOG_DEBUG, "Memory update sent for '%s' (%zu bytes at offset %u)", 
+              config->name, size, offset);
+    
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+// Send full memory state via UDP
+static PlatformErrorCode send_full_memory(
+    SharedMemoryMonitorConfig* config,
+    void* mapped_data
+) {
+    // Prepare message header with block name
+    typedef struct {
+        uint8_t msg_type;
+        uint16_t seq_num;
+        uint8_t name_len;
+        char block_name[64];  // Fixed size for simplicity
+        uint32_t offset;
+        uint32_t length;
+    } MessageHeader;
+    
+    static uint16_t sequence_counter = 0;
+    
+    // Calculate total message size
+    size_t header_size = sizeof(MessageHeader);
+    size_t total_size = header_size + config->data_size;
+    
+    // Allocate buffer for message
+    uint8_t* message = (uint8_t*)malloc(total_size);
+    if (!message) {
+        logger_log(LOG_ERROR, "Failed to allocate memory for UDP message (size=%zu)", total_size);
+        return PLATFORM_ERROR_OUT_OF_MEMORY;
+    }
+    
+    // Fill in header
+    MessageHeader* header = (MessageHeader*)message;
+    header->msg_type = SYNC_MSG_INIT;  // Use INIT message type for full state
+    header->seq_num = ++sequence_counter;
+    
+    // Set block name
+    size_t name_len = strlen(config->name);
+    if (name_len > sizeof(header->block_name) - 1) {
+        name_len = sizeof(header->block_name) - 1;
+    }
+    header->name_len = (uint8_t)name_len;
+    memcpy(header->block_name, config->name, name_len);
+    header->block_name[name_len] = '\0';  // Ensure null termination
+    
+    header->offset = 0;
+    header->length = (uint32_t)config->data_size;
+    
+    // Fill in data
+    memcpy(message + header_size, mapped_data, config->data_size);
+    
+    // Set up remote address
+    PlatformSocketAddress remote_addr = {
+        .port = config->forwarding.port,
+        .is_ipv6 = false
+    };
+    strncpy(remote_addr.host, config->forwarding.hostname, sizeof(remote_addr.host) - 1);
+    remote_addr.host[sizeof(remote_addr.host) - 1] = '\0';
+    
+    // Send the message
+    size_t sent;
+    PlatformErrorCode err = platform_socket_sendto(
+        config->socket, 
+        message, 
+        total_size, 
+        &remote_addr,
+        &sent
+    );
+    
+    // Log the message details
+    logger_log(LOG_DEBUG, "Sending UDP message: type=%d (INIT), seq=%u, block='%s', offset=%u, len=%u",
+              header->msg_type, header->seq_num, header->block_name, header->offset, header->length);
+    
+    // Clean up buffer
+    free(message);
+    
+    // Check for errors
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "UDP send failed for '%s': error %d (%s)", 
+                  config->name, err, error_msg);
+        return err;
+    }
+    
+    if (sent != total_size) {
+        logger_log(LOG_WARN, "Incomplete UDP send for '%s': %zu of %zu bytes", 
+                  config->name, sent, total_size);
+        return PLATFORM_ERROR_UNKNOWN;
+    }
+    
+    return PLATFORM_ERROR_SUCCESS;
+}
+
 // Process and forward memory changes
 static void process_memory_changes(
     SharedMemoryMonitorConfig* config,
@@ -231,23 +560,25 @@ static void process_memory_changes(
 ) {
     // Check for changes in shared memory data
     if (*first_read) {
-        // On first read, send entire memory block
-        shared_memory_udp_sender_callback_with_offset(mapped_data, config->data_size, 0);
-        logger_log(LOG_DEBUG, "Sent initial full memory state (%zu bytes)", config->data_size);
+        // On first read, send entire memory block with INIT message type
+        PlatformErrorCode result = send_full_memory(config, mapped_data);
+        if (result == PLATFORM_ERROR_SUCCESS) {
+            logger_log(LOG_DEBUG, "Sent initial full memory state (%zu bytes)", config->data_size);
+        } else {
+            logger_log(LOG_ERROR, "Failed to send initial full memory state: %d", result);
+        }
         
-        // Copy current data to our comparison buffer
+        // Copy current state to comparison buffer
         memcpy(last_data, mapped_data, config->data_size);
         *first_read = false;
     } else {
-        // Detect specific changed regions
-        #define MAX_CHANGE_REGIONS 100
-        ChangeRegion change_regions[MAX_CHANGE_REGIONS];
+        // Compare with last state to find changes
+        ChangeRegionNode* regions_head = NULL;
         int num_regions = detect_memory_changes(
             mapped_data, 
             last_data, 
-            config->data_size, 
-            change_regions, 
-            MAX_CHANGE_REGIONS
+            config->data_size,
+            &regions_head
         );
         
         if (num_regions > 0) {
@@ -255,12 +586,14 @@ static void process_memory_changes(
                       num_regions, config->name);
             
             // Forward each changed region
-            for (int i = 0; i < num_regions; i++) {
-                uint32_t offset = change_regions[i].offset;
-                uint32_t length = change_regions[i].length;
+            ChangeRegionNode* current = regions_head;
+            while (current) {
+                uint32_t offset = current->region.offset;
+                uint32_t length = current->region.length;
                 
                 // Send the changed region
-                shared_memory_udp_sender_callback_with_offset(
+                send_memory_update(
+                    config,
                     (uint8_t*)mapped_data + offset, 
                     length, 
                     offset
@@ -268,10 +601,20 @@ static void process_memory_changes(
                 
                 logger_log(LOG_DEBUG, "Forwarded changed region: offset=%u, length=%u", 
                          offset, length);
+                
+                current = current->next;
             }
             
             // Update our comparison buffer with the new state
             memcpy(last_data, mapped_data, config->data_size);
+            
+            // Free the linked list
+            current = regions_head;
+            while (current) {
+                ChangeRegionNode* next = current->next;
+                free(current);
+                current = next;
+            }
         }
     }
 }
@@ -309,6 +652,16 @@ void* shared_memory_monitor_thread(void* arg) {
     if (config->create && config->data_size == 0) {
         logger_log(LOG_ERROR, "Cannot create shared memory with zero size for block %d", block_index);
         return NULL;
+    }
+    
+    // Initialize socket for this monitor
+    if (config->access == PLATFORM_SHM_READ || config->access == PLATFORM_SHM_READWRITE) {
+        PlatformErrorCode socket_result = initialize_monitor_socket(config);
+        if (socket_result != PLATFORM_ERROR_SUCCESS) {
+            logger_log(LOG_ERROR, "Failed to initialize socket for block %d: %d", 
+                     block_index, socket_result);
+            // Continue anyway, we'll try again when needed
+        }
     }
     
     PlatformSharedMemoryHandle shm_handle = NULL;

@@ -145,3 +145,26 @@ PlatformErrorCode platform_set_system_error(int system_error) {
         system_error
     );
 }
+
+PlatformErrorCode platform_get_error_info(PlatformErrorDomain domain, PlatformError* error) {
+    if (!error || domain >= PLATFORM_ERROR_DOMAIN_MAX) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Only fill the error structure if the domain matches
+    if (domain == g_last_error.domain) {
+        error->domain = g_last_error.domain;
+        error->code = g_last_error.code;
+        error->system_error = g_last_error.system_error;
+        strncpy(error->message, g_last_error.message, sizeof(error->message) - 1);
+        error->message[sizeof(error->message) - 1] = '\0';
+    } else {
+        // If domain doesn't match, return success with no error
+        error->domain = domain;
+        error->code = PLATFORM_ERROR_SUCCESS;
+        error->system_error = 0;
+        error->message[0] = '\0';
+    }
+    
+    return PLATFORM_ERROR_SUCCESS;
+}
