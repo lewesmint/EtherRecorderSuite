@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include "shared_memory_manager.h"
 #include "shared_memory_monitor.h"
+#include "platform_string.h"
 #include "platform_error.h"
 #include "platform_time.h"
 #include "logger.h"
@@ -63,13 +64,13 @@ PlatformErrorCode shared_memory_load_config_from_ini(
     snprintf(key, sizeof(key), "%saccess", key_prefix);
     const char* access_str = get_config_string("shared_memory", key, "read");
     if (access_str) {
-        // if (strcmp_nocase(access_str, "read") == 0) {
-        //     config->access = PLATFORM_SHM_READ;
-        // } else if (strcmp_nocase(access_str, "write") == 0) {
-        //     config->access = PLATFORM_SHM_WRITE;
-        // } else if (strcmp_nocase(access_str, "readwrite") == 0) {
-        //     config->access = PLATFORM_SHM_READWRITE;
-        // }
+        if (strcmp_nocase(access_str, "read") == 0) {
+            config->access = PLATFORM_SHM_READ;
+        } else if (strcmp_nocase(access_str, "write") == 0) {
+            config->access = PLATFORM_SHM_WRITE;
+        } else if (strcmp_nocase(access_str, "readwrite") == 0) {
+            config->access = PLATFORM_SHM_READWRITE;
+        }
     }
     
     // Get hostname
@@ -80,7 +81,7 @@ PlatformErrorCode shared_memory_load_config_from_ini(
     
     // Get port
     snprintf(key, sizeof(key), "%sport", key_prefix);
-    config->forwarding.port = get_config_int("shared_memory", key, 5000);
+    config->forwarding.port = get_config_uint16("shared_memory", key, 5000);
     
     // Get create flag
     snprintf(key, sizeof(key), "%screate", key_prefix);
@@ -91,8 +92,8 @@ PlatformErrorCode shared_memory_load_config_from_ini(
     config->interval_ms = (unsigned int)get_config_int("shared_memory", key, config->interval_ms);
     
     // Get retry count
-    snprintf(key, sizeof(key), "%sretry_count", key_prefix);
-    config->retry_count = (unsigned int)get_config_int("shared_memory", key, 3);
+    snprintf(key, sizeof(key), "%smax_retries", key_prefix);
+    config->max_retries = (unsigned int)get_config_int("shared_memory", key, 3);
     
     // Get retry interval
     snprintf(key, sizeof(key), "%sretry_interval_ms", key_prefix);

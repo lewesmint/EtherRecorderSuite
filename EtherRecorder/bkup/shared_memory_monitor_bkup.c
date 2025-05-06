@@ -28,7 +28,6 @@ static SharedMemoryMonitorConfig defaut_monitor_config = {
 
 // Forward declarations
 static void* shared_memory_monitor_thread(void* arg);
-static void* monitor_block_thread(void* arg);
 
 // Structure to pass to individual monitor threads
 typedef struct {
@@ -138,7 +137,7 @@ static void* shared_memory_monitor_thread(void* arg) {
         // Create thread configuration
         ThreadConfig block_thread_config = {
             .label = thread_label,
-            .func = monitor_block_thread,
+            .func = shared_memory_monitor_thread,
             .data = &g_block_thread_data[i],
             .suppressed = false
         };
@@ -170,123 +169,6 @@ static void* shared_memory_monitor_thread(void* arg) {
     return NULL;
 }
 
-// Individual thread for monitoring a single shared memory block
-void* shared_memory_monitor_thread(void* arg) {
-    BlockMonitorThreadData* thread_data = (BlockMonitorThreadData*)arg;
-    if (!thread_data) {
-        logger_log(LOG_ERROR, "Invalid block monitor thread data");
-        return NULL;
-    }
-    
-    SharedMemoryMonitorConfig* config = &thread_data->config;
-    int block_index = thread_data->block_index;
-    
-    logger_log(LOG_INFO, "Block %d monitor thread starting for '%s'", 
-              block_index, config->name);
-    
-    // TODO: Implement actual shared memory monitoring
-    // 1. Open the shared memory
-    PlatformSharedMemoryHandle shm_handle = NULL;
-    PlatformErrorCode result = platform_shared_memory_open(
-        &shm_handle,
-        config->name,
-        config->data_size,
-        config->access,
-        config->create
-    );
-    
-    if (result != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to open shared memory '%s': %d", 
-                 config->name, result);
-        return NULL;
-    }
-    
-    // 2. Map it into our address space
-    void* mapped_data = NULL;
-    result = platform_shared_memory_map(shm_handle, &mapped_data);
-    if (result != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to map shared memory '%s': %d", 
-                 config->name, result);
-        platform_shared_memory_close(shm_handle);
-        return NULL;
-    }
-    
-    // Get actual size if auto-detect was requested
-    size_t actual_size = config->data_size;
-    if (actual_size == 0) {
-        result = platform_shared_memory_get_size(shm_handle, &actual_size);
-        if (result != PLATFORM_ERROR_SUCCESS) {
-            logger_log(LOG_ERROR, "Failed to get shared memory size: %d", result);
-            platform_shared_memory_unmap(shm_handle);
-            platform_shared_memory_close(shm_handle);
-            return NULL;
-        }
-        logger_log(LOG_INFO, "Auto-detected shared memory size: %zu bytes", actual_size);
-    }
-    
-    // Allocate buffer for last data to detect changes
-    void* last_data = NULL;
-    if (config->detect_changes) {
-        last_data = malloc(actual_size);
-        if (!last_data) {
-            logger_log(LOG_ERROR, "Failed to allocate memory for data comparison");
-            platform_shared_memory_unmap(shm_handle);
-            platform_shared_memory_close(shm_handle);
-            return NULL;
-        }
-        
-        // Initialize with zeros
-        memset(last_data, 0, actual_size);
-    }
-    
-    logger_log(LOG_INFO, "Successfully opened shared memory '%s' (%zu bytes)", 
-             config->name, actual_size);
-    
-    // 3. Periodically check for changes
-    bool first_read = true;
-    
-    // Main monitoring loop
-    while (!shutdown_signalled()) {
-        bool should_process = false;
-        
-        if (config->detect_changes) {
-            // Check for changes in shared memory data
-            if (first_read || memcmp(mapped_data, last_data, actual_size) != 0) {
-                should_process = true;
-                // Copy current data to our comparison buffer
-                memcpy(last_data, mapped_data, actual_size);
-                first_read = false;
-                
-                logger_log(LOG_DEBUG, "Detected changes in shared memory '%s'", config->name);
-            }
-        } else {
-            // Always process all data
-            should_process = true;
-        }
-        
-        // 4. Forward changes to the network if needed
-        if (should_process) {
-            // TODO: Implement network forwarding
-            logger_log(LOG_DEBUG, "Processing shared memory data for '%s'", config->name);
-        }
-        
-        // Wait before next check
-        sleep_ms(config->interval_ms);
-    }
-    
-    logger_log(LOG_INFO, "Block %d monitor thread shutting down for '%s'", 
-              block_index, config->name);
-    
-    // Clean up
-    if (last_data) {
-        free(last_data);
-    }
-    
-    platform_shared_memory_unmap(shm_handle);
-    platform_shared_memory_close(shm_handle);
-    
-    return NULL;
-}
 
 // // Set up network forwarding
 // PlatformErrorCode shared_memory_set_network_forwarding(

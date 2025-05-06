@@ -12,6 +12,13 @@
 #include "app_config.h"
 #include "shutdown_handler.h"
 
+// Stub implementation - this would need to be properly implemented
+void shared_memory_udp_sender_callback_with_offset(const void* data, size_t size, uint32_t offset) {
+    (void)data;
+    // Stub implementation
+    logger_log(LOG_DEBUG, "Would send %zu bytes at offset %u", size, offset);
+}
+
 // Message header structure
 #pragma pack(1)
 typedef struct {
@@ -30,7 +37,7 @@ typedef struct {
 static SharedMemorySyncConfig sync_config = {
     .name = "TestSharedMemory",
     .hostname = "127.0.0.1",
-    .access = SYNC_ACCESS_READWRITE,
+    .access = PLATFORM_SHM_READWRITE,
     .size = 1024,
     .port = 5000,
     .create = true,
@@ -70,11 +77,11 @@ PlatformErrorCode shared_memory_sync_init(const char* config_section) {
     const char* access_str = get_config_string(config_section, "access", NULL);
     if (access_str) {
         if (strcmp(access_str, "read") == 0) {
-            sync_config.access = SYNC_ACCESS_READ;
+            sync_config.access = PLATFORM_SHM_READ;
         } else if (strcmp(access_str, "write") == 0) {
-            sync_config.access = SYNC_ACCESS_WRITE;
+            sync_config.access = PLATFORM_SHM_WRITE;
         } else if (strcmp(access_str, "readwrite") == 0) {
-            sync_config.access = SYNC_ACCESS_READWRITE;
+            sync_config.access = PLATFORM_SHM_READWRITE;
         }
     }
 
@@ -211,7 +218,7 @@ void shared_memory_udp_sender_callback(const void* data, size_t size) {
     }
 
     // Only send if we're in read mode
-    if (sync_config.access != SYNC_ACCESS_READ && sync_config.access != SYNC_ACCESS_READWRITE) {
+    if (sync_config.access != PLATFORM_SHM_READ && sync_config.access != PLATFORM_SHM_READWRITE) {
         return;
     }
 
@@ -254,8 +261,8 @@ static void* udp_listener_thread(void* arg) {
                     case SYNC_MSG_INIT:
                         logger_log(LOG_INFO, "Received INIT message (seq: %u)", header->seq_num);
                         // If we're in READ mode, respond with full memory state
-                        if (sync_config.access == SYNC_ACCESS_READ || 
-                            sync_config.access == SYNC_ACCESS_READWRITE) {
+                        if (sync_config.access == PLATFORM_SHM_READ || 
+                            sync_config.access == PLATFORM_SHM_READWRITE) {
                             // Get current memory and send full sync
                             // This would require opening and reading from shared memory
                             // For simplicity, we'll just send whatever data we have if in READ mode
@@ -266,8 +273,8 @@ static void* udp_listener_thread(void* arg) {
                     case SYNC_MSG_UPDATE:
                         logger_log(LOG_INFO, "Received UPDATE message (seq: %u)", header->seq_num);
                         // If we're in WRITE mode, apply the update
-                        if (sync_config.access == SYNC_ACCESS_WRITE || 
-                            sync_config.access == SYNC_ACCESS_READWRITE) {
+                        if (sync_config.access == PLATFORM_SHM_WRITE || 
+                            sync_config.access == PLATFORM_SHM_READWRITE) {
                             // err = apply_memory_update(buffer, bytes_received);
                             // if (err != PLATFORM_ERROR_SUCCESS) {
                             //     logger_log(LOG_ERROR, "Failed to apply memory update: %d", err);
@@ -278,8 +285,8 @@ static void* udp_listener_thread(void* arg) {
                     case SYNC_MSG_FULL_SYNC:
                         logger_log(LOG_INFO, "Received FULL_SYNC message (seq: %u)", header->seq_num);
                         // Similar to UPDATE but we treat it as a full replacement
-                        if (sync_config.access == SYNC_ACCESS_WRITE || 
-                            sync_config.access == SYNC_ACCESS_READWRITE) {
+                        if (sync_config.access == PLATFORM_SHM_WRITE || 
+                            sync_config.access == PLATFORM_SHM_READWRITE) {
                             // err = apply_memory_update(buffer, bytes_received);
                             // if (err != PLATFORM_ERROR_SUCCESS) {
                             //     logger_log(LOG_ERROR, "Failed to apply full sync: %d", err);
@@ -356,19 +363,10 @@ static PlatformErrorCode apply_memory_update(const uint8_t* message, size_t mess
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
     
-    // Lock shared memory for writing
-   // PlatformErrorCode err = platform_shared_memory_lock(writer_shm, 1000);
-    //if (err != PLATFORM_ERROR_SUCCESS) {
-    //    logger_log(LOG_ERROR, "Failed to lock shared memory for writing: %d", err);
-     //   return err;
-    // }
     
     // Apply the update
     memcpy((uint8_t*)writer_data + offset, message + data_offset, data_len);
-     
-    // Unlock shared memory
-    //platform_shared_memory_unlock(writer_shm);
-    
+         
     logger_log(LOG_DEBUG, "Applied memory update: offset=%u, len=%u", offset, data_len);
     return PLATFORM_ERROR_SUCCESS;
 }
