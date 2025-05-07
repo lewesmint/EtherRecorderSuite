@@ -15,6 +15,7 @@
 #include "logger.h"
 #include "app_config.h"
 #include "shutdown_handler.h"
+#include "utils.h"  // Add this include for get_time_ms
 
 typedef struct {
     uint32_t offset;
@@ -662,6 +663,34 @@ static void process_memory_changes(
     }
 }
 
+// Add this function to write test data to shared memory
+static void write_test_data_to_shared_memory(
+    SharedMemoryMonitorConfig* config,
+    void* mapped_data
+) {
+    if (!mapped_data || config->access == PLATFORM_SHM_READ) {
+        // Skip if we don't have write access
+        return;
+    }
+    
+    // Create a simple test pattern
+    uint32_t* data32 = (uint32_t*)mapped_data;
+    
+    // Write current timestamp (seconds since epoch)
+    data32[0] = (uint32_t)time(NULL);
+    
+    // Write a counter that increments each time
+    static uint32_t counter = 0;
+    data32[1] = ++counter;
+    
+    // Write a recognizable pattern
+    data32[2] = 0xDEADBEEF;
+    data32[3] = 0xCAFEBABE;
+    
+    logger_log(LOG_INFO, "Test data written to shared memory '%s': timestamp=%u, counter=%u", 
+              config->name, data32[0], data32[1]);
+}
+
 // Main thread function for monitoring shared memory
 void* shared_memory_monitor_thread(void* arg) {
     ThreadConfig* thread_config = (ThreadConfig*)arg;
@@ -758,14 +787,27 @@ void* shared_memory_monitor_thread(void* arg) {
         bool first_read = true;
         PlatformMutex_T shm_mutex;
         platform_mutex_init(&shm_mutex);
+        
+        // Add a timestamp for periodic test data writing
+        uint64_t last_test_write_time = get_time_ms();
 
         while (!shutdown_signalled()) {
-            // Lock shared memory for reading
+            // Lock shared memory for reading/writing
             PlatformErrorCode lock_result = platform_mutex_lock(&shm_mutex);
             if (lock_result != PLATFORM_ERROR_SUCCESS) {
                 logger_log(LOG_WARN, "Failed to lock shared memory for reading: %d", lock_result);
                 sleep_ms(config->interval_ms);
                 continue;
+            }
+            
+            // Check if we should write test data (every 5 seconds)
+            uint64_t current_time = get_time_ms();
+            if (current_time - last_test_write_time > 5000) {
+                // Write test data if we have write access
+                if (config->access == PLATFORM_SHM_WRITE || config->access == PLATFORM_SHM_READWRITE) {
+                    write_test_data_to_shared_memory(config, mapped_data);
+                    last_test_write_time = current_time;
+                }
             }
             
             if (should_detect_changes) {
