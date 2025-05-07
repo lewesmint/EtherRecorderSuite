@@ -13,7 +13,8 @@
 // Network forwarding configuration
 typedef struct {
     char hostname[128];
-    uint16_t port;
+    uint16_t listen_port;        // Local port to listen on
+    uint16_t forward_port;       // Remote port to forward to
     bool use_tcp;
     uint8_t retry_count;
     uint16_t retry_interval_ms;

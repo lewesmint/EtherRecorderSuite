@@ -63,7 +63,13 @@ typedef enum PlatformErrorCode {
     PLATFORM_ERROR_CONNECTION_REFUSED = 112,    // New: Server actively refused connection
     PLATFORM_ERROR_NETWORK_DOWN = 113,          // New: Network interface is down
     PLATFORM_ERROR_NETWORK_UNREACHABLE = 114,   // New: Network is unreachable
-    PLATFORM_ERROR_PEER_SHUTDOWN = 115,          // Remote peer has closed their end of the connection
+    PLATFORM_ERROR_PEER_SHUTDOWN = 115,         // Remote peer has closed their end of the connection
+    PLATFORM_ERROR_SOCKET_INIT = 116,           // Failed to initialize socket subsystem
+    PLATFORM_ERROR_SOCKET_OPERATION = 117,      // Generic socket operation error
+    PLATFORM_ERROR_CONNECTION_RESET = 118,      // Connection reset by peer
+    PLATFORM_ERROR_ADDRESS_IN_USE = 119,        // Address already in use
+    PLATFORM_ERROR_ADDRESS_NOT_AVAILABLE = 120, // Address not available
+    PLATFORM_ERROR_INVALID_ADDRESS = 121,       // Invalid address format
 
     // Thread errors (200-299)
     PLATFORM_ERROR_THREAD_CREATE = 200,

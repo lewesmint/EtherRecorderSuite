@@ -79,9 +79,13 @@ PlatformErrorCode shared_memory_load_config_from_ini(
     strncpy(config->forwarding.hostname, hostname, sizeof(config->forwarding.hostname) - 1);
     config->forwarding.hostname[sizeof(config->forwarding.hostname) - 1] = '\0';
     
-    // Get port
-    snprintf(key, sizeof(key), "%sport", key_prefix);
-    config->forwarding.port = get_config_uint16("shared_memory", key, 5000);
+    // Get listen port
+    snprintf(key, sizeof(key), "%slisten_port", key_prefix);
+    config->forwarding.listen_port = (uint16_t)get_config_int("shared_memory", key, 5000);
+
+    // Get forward port
+    snprintf(key, sizeof(key), "%sforward_port", key_prefix);
+    config->forwarding.forward_port = (uint16_t)get_config_int("shared_memory", key, config->forwarding.listen_port);
     
     // Get create flag
     snprintf(key, sizeof(key), "%screate", key_prefix);
@@ -167,7 +171,7 @@ static void* shared_memory_manager_thread(void* arg) {
         }
         
         // Create thread name
-        snprintf(thread_label, 32, "SM_BLOCK_%d", i);
+        snprintf(thread_label, 32, "SM_MONITOR_%d", i);
         
         // Create thread configuration
         *block_thread_config = (ThreadConfig){

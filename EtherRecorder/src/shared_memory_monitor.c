@@ -167,19 +167,19 @@ static SharedMemoryMonitorConfig default_monitor_config = {
     .name = "TestSharedMemory",
     .create = true,
     .data_size = 0,                 // Auto-detect size
-    .access = PLATFORM_SHM_READ,   // Read-only access by default
-    .interval_ms = 100,           // Check every 10th of a second
-    .retry_interval_ms = 2000,     // Retry every 2 seconds
-    .max_retries = 5,              // 5 retries by default
-    .wait_indefinitely = true,     // Wait indefinitely by default
-    // .num_threads = 2,              // Use 2 worker threads by default
-    // .forwarding = {
-    //     .hostname = "localhost",
-    //     .port = 5000,
-    //     .use_tcp = false,         // Default to UDP
-    //     .retry_count = 3,
-    //     .retry_interval_ms = 500
-    // }
+    .access = PLATFORM_SHM_READ,    // Read-only access by default
+    .interval_ms = 100,             // Check every 10th of a second
+    .retry_interval_ms = 2000,      // Retry every 2 seconds
+    .max_retries = 5,               // 5 retries by default
+    .wait_indefinitely = true,      // Wait indefinitely by default
+    .forwarding = {
+        .hostname = "localhost",
+        .listen_port = 5000,        // Default listen port
+        .forward_port = 5000,       // Default forward port
+        .use_tcp = false,           // Default to UDP
+        .retry_count = 3,
+        .retry_interval_ms = 500
+    }
 };
 
 // Initialize a shared memory monitor configuration with defaults
@@ -268,6 +268,51 @@ static PlatformErrorCode open_and_map_shared_memory(
     logger_log(LOG_INFO, "Successfully opened and mapped shared memory '%s' (%zu bytes)", 
              config->name, config->data_size);
     
+    // Start the shared memory listener thread if not already started
+    // MOVED: Only start listener thread after successful mapping
+    static bool listener_thread_started = false;
+    if (!listener_thread_started && *mapped_data != NULL) {
+        // Create listener data
+        SharedMemoryListenerData listener_data = {
+            .block_index = config->block_index,
+            .shm_handle = *handle,
+            .mapped_data = *mapped_data,
+            .data_size = config->data_size
+        };
+        strncpy(listener_data.name, config->name, sizeof(listener_data.name) - 1);
+        listener_data.name[sizeof(listener_data.name) - 1] = '\0';
+        
+        ThreadConfig* listener_thread = get_shared_memory_listener_thread();
+        if (listener_thread) {
+            // Update the thread label to include the block index
+            char* thread_label = (char*)listener_thread->label;
+            snprintf(thread_label, 32, "SM_LISTEN_%d", config->block_index);
+            
+            // Create a persistent copy of the listener data
+            SharedMemoryListenerData* data_copy = (SharedMemoryListenerData*)malloc(sizeof(SharedMemoryListenerData));
+            if (data_copy) {
+                *data_copy = listener_data;
+                listener_thread->data = data_copy;
+                
+                // Launch the listener thread
+                ThreadResult thread_result = app_thread_create(listener_thread);
+                if (thread_result != THREAD_SUCCESS) {
+                    logger_log(LOG_ERROR, "Failed to create listener thread for '%s'", config->name);
+                    free(data_copy);
+                    free((void*)listener_thread->label);
+                    free(listener_thread);
+                } else {
+                    logger_log(LOG_INFO, "Started listener thread for '%s'", config->name);
+                    listener_thread_started = true;
+                }
+            } else {
+                logger_log(LOG_ERROR, "Failed to allocate memory for listener data");
+                free((void*)listener_thread->label);
+                free(listener_thread);
+            }
+        }
+    }
+    
     return PLATFORM_ERROR_SUCCESS;
 }
 
@@ -324,18 +369,31 @@ static PlatformErrorCode initialize_monitor_socket(SharedMemoryMonitorConfig* co
         return err;
     }
     
-    logger_log(LOG_DEBUG, "UDP socket created successfully for '%s': %p", 
-              config->name, (void*)config->socket);
+    // Bind socket to the listen port
+    PlatformSocketAddress bind_addr = {
+        .port = config->forwarding.listen_port,
+        .is_ipv6 = false
+    };
+    strcpy(bind_addr.host, "0.0.0.0"); // Bind to all interfaces
     
-    // // Verify socket is valid
-    // bool is_valid = false;
-    // err = platform_socket_is_valid(config->socket, &is_valid);
-    // if (err != PLATFORM_ERROR_SUCCESS || !is_valid) {
-    //     logger_log(LOG_ERROR, "Socket created but not valid for '%s'", config->name);
-    //     platform_socket_close(config->socket);
-    //     config->socket = NULL;
-    //     return PLATFORM_ERROR_INVALID_HANDLE;
-    // }
+    err = platform_socket_bind(config->socket, &bind_addr);
+    if (err != PLATFORM_ERROR_SUCCESS) {
+        char error_msg[256];
+        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
+        logger_log(LOG_ERROR, "Failed to bind UDP socket for '%s' to port %d: %d (%s)", 
+                  config->name, config->forwarding.listen_port, err, error_msg);
+        platform_socket_close(config->socket);
+        config->socket = NULL;
+        return err;
+    }
+    
+    logger_log(LOG_DEBUG, "UDP socket created and bound successfully for '%s': %p on port %d", 
+              config->name, (void*)config->socket, config->forwarding.listen_port);
+    
+    // Log the configuration we're using
+    logger_log(LOG_INFO, "UDP socket for '%s' configured to listen on port %d and send to %s:%d", 
+              config->name, config->forwarding.listen_port, 
+              config->forwarding.hostname, config->forwarding.forward_port);
     
     config->socket_initialized = true;
     return PLATFORM_ERROR_SUCCESS;
@@ -416,7 +474,7 @@ static PlatformErrorCode send_memory_update(
     
     // Set up remote address
     PlatformSocketAddress remote_addr = {
-        .port = config->forwarding.port,
+        .port = config->forwarding.forward_port,
         .is_ipv6 = false
     };
     strncpy(remote_addr.host, config->forwarding.hostname, sizeof(remote_addr.host) - 1);
@@ -510,7 +568,7 @@ static PlatformErrorCode send_full_memory(
     
     // Set up remote address
     PlatformSocketAddress remote_addr = {
-        .port = config->forwarding.port,
+        .port = config->forwarding.forward_port,
         .is_ipv6 = false
     };
     strncpy(remote_addr.host, config->forwarding.hostname, sizeof(remote_addr.host) - 1);
@@ -645,8 +703,8 @@ void* shared_memory_monitor_thread(void* arg) {
     logger_log(LOG_INFO, "  Access: %d", config->access);
     logger_log(LOG_INFO, "  Create: %s", config->create ? "true" : "false");
     logger_log(LOG_INFO, "  Interval: %u ms", config->interval_ms);
-    logger_log(LOG_INFO, "  Network: %s:%d", 
-             config->forwarding.hostname, config->forwarding.port);
+    logger_log(LOG_INFO, "  Network: %s:%d (listen on %d)", 
+             config->forwarding.hostname, config->forwarding.forward_port, config->forwarding.listen_port);
     
     // Validate configuration
     if (config->create && config->data_size == 0) {

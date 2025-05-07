@@ -673,26 +673,47 @@ PlatformErrorCode platform_socket_recvfrom(
     PlatformSocketAddress* src_addr,
     size_t* bytes_received)
 {
+//    printf("platform_socket_recvfrom called\n");
     if (!handle || !buffer || !bytes_received) {
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
+//    printf("platform_socket_recvfrom called not an early return\n");
 
     *bytes_received = 0;
     
+    // Add debug logging
+    OutputDebugStringA("platform_socket_recvfrom: Starting receive operation\n");
+    char debug_buf[256];
+    sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: socket=%d, buffer=%p, length=%zu\n", 
+             (int)handle->fd, buffer, length);
+    OutputDebugStringA(debug_buf);
+    
     SOCKADDR_STORAGE addr = {0};
     int addr_len = sizeof(addr);
-    
+    printf("before recvfrom called\n");
     int result = recvfrom(handle->fd, (char*)buffer, (int)length, 0,
                          src_addr ? (SOCKADDR*)&addr : NULL, 
                          src_addr ? &addr_len : NULL);
+    printf("after recvfrom called\n");
+    sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: recvfrom result=%d, WSAGetLastError=%d\n", 
+             result, WSAGetLastError());
+    printf(debug_buf);
+    printf("Hello\n");
+    
     if (result == SOCKET_ERROR) {
         *bytes_received = 0;
-        return (WSAGetLastError() == WSAEWOULDBLOCK && !handle->opts.blocking) ? 
+        int error = WSAGetLastError();
+        sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: SOCKET_ERROR, WSAGetLastError=%d\n", error);
+        OutputDebugStringA(debug_buf);
+        
+        return (error == WSAEWOULDBLOCK && !handle->opts.blocking) ? 
                PLATFORM_ERROR_WOULD_BLOCK : PLATFORM_ERROR_SOCKET_RECEIVE;
     }
     
     // For UDP, 0 bytes is a valid empty datagram, not a shutdown
     if (result == 0 && handle->is_tcp) {
+        sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: TCP connection closed (0 bytes)\n");
+        OutputDebugStringA(debug_buf);
         return PLATFORM_ERROR_PEER_SHUTDOWN;
     }
     
@@ -704,17 +725,72 @@ PlatformErrorCode platform_socket_recvfrom(
             src_addr->port = ntohs(addr6->sin6_port);
             InetNtopA(AF_INET6, &addr6->sin6_addr, 
                      src_addr->host, sizeof(src_addr->host));
+            
+            sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: Received from IPv6 %s:%d\n", 
+                     src_addr->host, src_addr->port);
+            OutputDebugStringA(debug_buf);
         } else {
             SOCKADDR_IN* addr4 = (SOCKADDR_IN*)&addr;
             src_addr->is_ipv6 = false;
             src_addr->port = ntohs(addr4->sin_port);
             InetNtopA(AF_INET, &addr4->sin_addr, 
                      src_addr->host, sizeof(src_addr->host));
+                     
+            sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: Received from IPv4 %s:%d\n", 
+                     src_addr->host, src_addr->port);
+            OutputDebugStringA(debug_buf);
         }
     }
 
     *bytes_received = result;
     handle->stats.bytes_received += result;
     handle->stats.packets_received++;
+    
+    sprintf_s(debug_buf, sizeof(debug_buf), "platform_socket_recvfrom: Success, received %d bytes\n", result);
+    OutputDebugStringA(debug_buf);
+    
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+/**
+ * @brief Get the local address of a socket
+ * 
+ * @param handle Socket handle
+ * @param address Pointer to store the local address
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_socket_get_local_address(
+    PlatformSocketHandle handle,
+    PlatformSocketAddress* address)
+{
+    if (!handle || !address) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+
+    struct sockaddr_storage addr;
+    int addr_len = sizeof(addr);
+
+    if (getsockname(handle->fd, (struct sockaddr*)&addr, &addr_len) == SOCKET_ERROR) {
+        return PLATFORM_ERROR_SOCKET_OPTION;
+    }
+
+    // Clear the address structure
+    memset(address->host, 0, sizeof(address->host));
+
+    // Extract address information based on family
+    if (addr.ss_family == AF_INET6) {
+        struct sockaddr_in6* addr6 = (struct sockaddr_in6*)&addr;
+        address->is_ipv6 = true;
+        address->port = ntohs(addr6->sin6_port);
+        InetNtopA(AF_INET6, &addr6->sin6_addr, 
+                address->host, sizeof(address->host));
+    } else {
+        struct sockaddr_in* addr4 = (struct sockaddr_in*)&addr;
+        address->is_ipv6 = false;
+        address->port = ntohs(addr4->sin_port);
+        InetNtopA(AF_INET, &addr4->sin_addr, 
+                address->host, sizeof(address->host));
+    }
+
     return PLATFORM_ERROR_SUCCESS;
 }

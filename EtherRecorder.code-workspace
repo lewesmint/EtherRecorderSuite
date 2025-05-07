@@ -18,6 +18,9 @@
         "cmake.configureOnOpen": true,
         "cmake.beforeConfigure": [
             "Run Platform Switch Script"
-        ]
+        ],
+        "files.associations": {
+            "platform_path.h": "c"
+        }
     }
 }

@@ -263,6 +263,17 @@ PlatformErrorCode platform_socket_recvfrom(
     PlatformSocketAddress* src_addr,
     size_t* bytes_received);
 
+/**
+ * @brief Get the local address of a socket
+ * 
+ * @param handle Socket handle
+ * @param address Pointer to store the local address
+ * @return PlatformErrorCode indicating success or failure
+ */
+PlatformErrorCode platform_socket_get_local_address(
+    PlatformSocketHandle handle,
+    PlatformSocketAddress* address);
+
 #ifdef __cplusplus
 }
 #endif

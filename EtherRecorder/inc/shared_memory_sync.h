@@ -6,36 +6,40 @@
 #define SHARED_MEMORY_SYNC_H
 
 #include <stdint.h>
-#include <stddef.h>
-#include "platform_shared_memory.h"  // Include for PlatformSharedMemoryAccess
-#include "app_thread.h"
+#include <stdbool.h>
+#include "platform_shared_memory.h"
+#include "platform_error.h"
+#include "shared_memory_monitor.h"  // Include for SharedMemoryMonitorConfig
 
-// Message types for sync protocol
+#define MAX_SYNC_MESSAGE_SIZE 1400
+
+// Message types for shared memory synchronization
 typedef enum {
-    SYNC_MSG_INIT = 1,     // Initial sync request
-    SYNC_MSG_UPDATE = 2,   // Memory update
-    SYNC_MSG_ACK = 3,      // Acknowledgment
-    SYNC_MSG_HEARTBEAT = 4 // Heartbeat message
+    SYNC_MSG_INIT = 1,       // Initial full memory state
+    SYNC_MSG_UPDATE = 2,     // Incremental update
+    SYNC_MSG_ACK = 3,        // Acknowledgment
+    SYNC_MSG_HEARTBEAT = 4   // Heartbeat/keep-alive
 } SharedMemorySyncMessageType;
 
-// Configuration for shared memory sync
+// Structure to pass shared memory information to the listener thread
 typedef struct {
-    char name[64];                // Name of shared memory block
-    char hostname[128];           // Remote hostname/IP
-    PlatformSharedMemoryAccess access;  // Access mode (using platform enum)
-    size_t size;                  // Size of shared memory
-    uint16_t port;                // UDP port
-    bool create;                  // Create if not exists
-    unsigned int update_interval_ms;  // Update interval
-    unsigned int retry_count;     // Retry count
-    unsigned int retry_interval_ms;   // Retry interval
-} SharedMemorySyncConfig;
+    int block_index;
+    PlatformSharedMemoryHandle shm_handle;
+    void* mapped_data;
+    size_t data_size;
+    char name[64];
+} SharedMemoryListenerData;
 
-// Function declarations
+// Initialize shared memory synchronization
 PlatformErrorCode shared_memory_sync_init(const char* config_section);
+
+// Shutdown shared memory synchronization
 void shared_memory_sync_shutdown(void);
-ThreadConfig* get_udp_listener_thread(void);
-void shared_memory_udp_sender_callback(const void* data, size_t size);
-void shared_memory_udp_sender_callback_with_offset(const void* data, size_t size, uint32_t offset);
+
+// Get the shared memory listener thread
+ThreadConfig* get_shared_memory_listener_thread(void);
+
+// Send memory update
+PlatformErrorCode shared_memory_sync_send_update(const void* data, size_t size);
 
 #endif // SHARED_MEMORY_SYNC_H
