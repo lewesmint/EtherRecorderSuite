@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(PlatformLayer C)
 
+# Force x64 architecture
+set(CMAKE_SYSTEM_PROCESSOR "AMD64")
+message(STATUS "PlatformLayer - Building for x64 architecture")
+
 # Set C standard consistently for all platforms
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -52,6 +56,8 @@ if(APPLE)
         POSIX=1
         _DARWIN_C_SOURCE
     )
+    # Force x86_64 architecture on macOS
+    set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "Build architectures for macOS" FORCE)
 elseif(WIN32)
     add_compile_definitions(
         WIN32=1
@@ -182,3 +188,12 @@ install(DIRECTORY inc/
 #         COMMENT "Copying compile_commands.json to source directory"
 #     )
 # endif()
+
+# Add this at the end of the file to output architecture information
+message(STATUS "PlatformLayer - Generator platform: ${CMAKE_GENERATOR_PLATFORM}")
+message(STATUS "PlatformLayer - Target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(STATUS "PlatformLayer - Building for 64-bit architecture")
+else()
+    message(STATUS "PlatformLayer - Building for 32-bit architecture")
+endif()

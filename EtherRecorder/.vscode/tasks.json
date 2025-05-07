@@ -28,10 +28,10 @@
             "label": "Clean All",
             "type": "shell",
             "windows": {
-                "command": "if exist \"${workspaceFolder}\\build\\windows-arm64\" rmdir /s /q \"${workspaceFolder}\\build\\windows-arm64\""
+                "command": "if exist \"${workspaceFolder}\\build\\windows-x64\" rmdir /s /q \"${workspaceFolder}\\build\\windows-x64\""
             },
             "osx": {
-                "command": "rm -rf \"${workspaceFolder}/build/macos-arm64\""
+                "command": "rm -rf \"${workspaceFolder}/build/macos-x64\""
             }
         },
         {
@@ -39,10 +39,10 @@
             "type": "shell",
             "command": "cmake",
             "windows": {
-                "args": ["--preset", "windows-arm64-debug"]
+                "args": ["--preset", "windows-x64-debug"]
             },
             "osx": {
-                "args": ["--preset", "macos-arm64-debug"]
+                "args": ["--preset", "macos-x64-debug"]
             },
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -99,10 +99,10 @@
             "type": "shell",
             "command": "cmake",
             "windows": {
-                "args": ["--preset", "windows-arm64-release"]
+                "args": ["--preset", "windows-x64-release"]
             },
             "osx": {
-                "args": ["--preset", "macos-arm64-release"]
+                "args": ["--preset", "macos-x64-release"]
             },
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -117,7 +117,7 @@
                 "args": [
                     "--build",
                     "--preset",
-                    "windows-arm64-debug",
+                    "windows-x64-debug",
                     "--target",
                     "EtherRecorder",
                     "--config",
@@ -128,7 +128,7 @@
                 "args": [
                     "--build",
                     "--preset",
-                    "macos-arm64-debug",
+                    "macos-x64-debug",
                     "--target",
                     "EtherRecorder"
                 ]
@@ -146,7 +146,7 @@
                 "args": [
                     "--build",
                     "--preset",
-                    "windows-arm64-release",
+                    "windows-x64-release",
                     "--target",
                     "EtherRecorder",
                     "--config",
@@ -157,11 +157,67 @@
                 "args": [
                     "--build",
                     "--preset",
-                    "macos-arm64-release",
+                    "macos-x64-release",
                     "--target",
                     "EtherRecorder"
                 ]
             },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
+        },
+        {
+            "label": "Configure EtherRecorder x64 (Debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--preset", "windows-x64-debug"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
+        },
+        {
+            "label": "Configure EtherRecorder x64 (Release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--preset", "windows-x64-release"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
+        },
+        {
+            "label": "Build EtherRecorder x64 (Debug)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "windows-x64-debug",
+                "--target",
+                "EtherRecorder",
+                "--config",
+                "debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$msCompile", "$gcc"]
+        },
+        {
+            "label": "Build EtherRecorder x64 (Release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "windows-x64-release",
+                "--target",
+                "EtherRecorder",
+                "--config",
+                "release"
+            ],
             "options": {
                 "cwd": "${workspaceFolder}"
             },

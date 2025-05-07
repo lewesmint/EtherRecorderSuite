@@ -6,7 +6,7 @@
             // PLATFORM_SWITCH_START
             // MacOS Configuration
             //"type": "cppdbg",
-            //"program": "${workspaceFolder}/build/macos-arm64/Debug/EtherRecorder",
+            //"program": "${workspaceFolder}/build/macos-x64/Debug/EtherRecorder",
             //"MIMode": "lldb",
             //"setupCommands": [
                 //{
@@ -17,7 +17,7 @@
             //"externalConsole": true,
             // Windows Configuration
             "type": "cppvsdbg",
-            "program": "${workspaceFolder}/build/windows-arm64/Debug/EtherRecorder.exe",
+            "program": "${workspaceFolder}/build/windows-x64/Debug/EtherRecorder.exe",
             "console": "externalTerminal",
             // PLATFORM_SWITCH_END
             "request": "launch",
@@ -32,7 +32,7 @@
             // PLATFORM_SWITCH_START
             // MacOS Configuration
             //"type": "cppdbg",
-            //"program": "${workspaceFolder}/build/macos-arm64/Release/EtherRecorder",
+            //"program": "${workspaceFolder}/build/macos-x64/Release/EtherRecorder",
             //"MIMode": "lldb",
             //"setupCommands": [
                 //{
