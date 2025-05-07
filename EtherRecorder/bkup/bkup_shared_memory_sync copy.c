@@ -298,125 +298,193 @@ void shared_memory_udp_sender_callback(const void* data, size_t size) {
 static void* shared_memory_listener_thread(void* arg) {
     ThreadConfig* config = (ThreadConfig*)arg;
     thread_registry_update_state(config->label, THREAD_STATE_RUNNING);
+
+    SharedMemoryListenerData* data = (SharedMemoryListenerData*)config->data;
     
     logger_log(LOG_INFO, "Shared memory listener thread started");
     
-    // Create a UDP socket for listening using the UDP wrapper
-    UdpSocketHandle listen_socket = NULL;
-    
-    // Create the socket
-    PlatformErrorCode err = udp_socket_create(&listen_socket);
-    if (err != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to create UDP socket: %d", err);
+    // Check if socket is valid
+    if (udp_socket == NULL) {
+        logger_log(LOG_ERROR, "UDP socket is NULL, cannot start listener thread");
         thread_registry_update_state(config->label, THREAD_STATE_TERMINATED);
         return NULL;
-    }
-    
-    // Bind to port 5002
-    err = udp_socket_bind(listen_socket, 5002);
-    if (err != PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_ERROR, "Failed to bind UDP socket to port 5002: %d", err);
-        udp_socket_close(listen_socket);
-        thread_registry_update_state(config->label, THREAD_STATE_TERMINATED);
-        return NULL;
-    }
-    
-    // Get the actual bound port to verify
-    uint16_t bound_port = 0;
-    if (udp_socket_get_bound_port(listen_socket, &bound_port) == PLATFORM_ERROR_SUCCESS) {
-        logger_log(LOG_INFO, "UDP socket bound to port %d", bound_port);
-    } else {
-        logger_log(LOG_WARN, "Could not get bound port, assuming 5002");
-        bound_port = 5002;
     }
     
     // Buffer for receiving data
-    uint8_t buffer[UDP_MAX_MESSAGE_SIZE];
+    uint8_t buffer[MAX_SYNC_MESSAGE_SIZE];
     
-    // Stats counters
-    uint32_t packets_received = 0;
-    uint64_t bytes_received_total = 0;
+    // Add counters for diagnostics
+    uint32_t receive_attempt_count = 0;
+    uint32_t successful_receive_count = 0;
     uint64_t last_stats_time = get_time_ms();
     
-    // Main receive loop
+    // Loop until shutdown
     while (!shutdown_signalled()) {
-        // Wait for data with timeout
-        PlatformErrorCode wait_err = udp_socket_wait_for_data(listen_socket, 100);
-        if (wait_err == PLATFORM_ERROR_TIMEOUT) {
-            // No data available, just continue
-            continue;
-        } else if (wait_err != PLATFORM_ERROR_SUCCESS) {
-            logger_log(LOG_WARN, "Error waiting for socket data: %d", wait_err);
-            sleep_ms(100);
-            continue;
-        }
-        
-        // Data is available, receive it
-        size_t bytes_received;
-        UdpSocketAddress sender_addr;
-        
-        PlatformErrorCode recv_err = udp_socket_receive(
-            listen_socket,
-            buffer,
-            sizeof(buffer),
-            &bytes_received,
-            &sender_addr
-        );
-        
-        if (recv_err == PLATFORM_ERROR_SUCCESS && bytes_received > 0) {
-            // Update stats
-            packets_received++;
-            bytes_received_total += bytes_received;
-            
-            // Log packet info
-            logger_log(LOG_INFO, "Received %zu bytes from %s:%d (packet #%u)", 
-                      bytes_received, sender_addr.host, sender_addr.port, packets_received);
-            
-            // Log first few bytes in hex for debugging
-            char hex_buffer[128] = {0};
-            size_t bytes_to_log = bytes_received > 16 ? 16 : bytes_received;
-            for (size_t i = 0; i < bytes_to_log; i++) {
-                char hex[4];
-                snprintf(hex, sizeof(hex), "%02X ", buffer[i]);
-                strcat(hex_buffer, hex);
-            }
-            logger_log(LOG_DEBUG, "First %zu bytes: %s", bytes_to_log, hex_buffer);
-            
-            // Try to interpret as text if it looks like ASCII
-            bool is_text = true;
-            for (size_t i = 0; i < bytes_received && i < 32; i++) {
-                if (buffer[i] < 32 && buffer[i] != '\r' && buffer[i] != '\n' && buffer[i] != '\t') {
-                    is_text = false;
-                    break;
-                }
-            }
-            
-            if (is_text) {
-                // Null-terminate the buffer for safe printing
-                char text_buffer[33] = {0};
-                size_t text_len = bytes_received < 32 ? bytes_received : 32;
-                memcpy(text_buffer, buffer, text_len);
-                logger_log(LOG_INFO, "Text content: %s", text_buffer);
-            }
-        } else if (recv_err != PLATFORM_ERROR_WOULD_BLOCK) {
-            logger_log(LOG_WARN, "Error receiving UDP data: %d", recv_err);
-            sleep_ms(100);
-        }
-        
         // Log stats periodically (every 5 seconds)
         uint64_t current_time = get_time_ms();
         if (current_time - last_stats_time > 5000) {
-            logger_log(LOG_INFO, "UDP Stats: packets=%u, total bytes=%llu", 
-                      packets_received, (unsigned long long)bytes_received_total);
+            logger_log(LOG_INFO, "UDP Stats: attempts=%u, success=%u", 
+                      receive_attempt_count, successful_receive_count);
+            
+            // Reset counters
+            receive_attempt_count = 0;
+            successful_receive_count = 0;
             last_stats_time = current_time;
+            
+            // Also verify the socket is still valid
+            if (udp_socket == NULL) {
+                logger_log(LOG_ERROR, "UDP socket is NULL, exiting listener thread");
+                break;
+            }
+            
+            // Verify the socket is still bound correctly
+            PlatformSocketAddress local_addr = {0};
+            if (platform_socket_get_local_address(udp_socket, &local_addr) == PLATFORM_ERROR_SUCCESS) {
+                logger_log(LOG_INFO, "Socket still bound to %s:%d", 
+                          local_addr.host, local_addr.port);
+            } else {
+                logger_log(LOG_WARN, "Failed to get local socket address");
+            }
         }
+        
+        // Use select to wait for data with a timeout
+        PlatformErrorCode wait_err = platform_socket_wait_readable(udp_socket, 1000);
+        if (wait_err == PLATFORM_ERROR_TIMEOUT) {
+            // No data available, just continue the loop
+            continue;
+        } else if (wait_err != PLATFORM_ERROR_SUCCESS) {
+            logger_log(LOG_WARN, "Error waiting for socket to be readable: %d", wait_err);
+            sleep_ms(100); // Sleep a bit on error
+            continue;
+        }
+        
+        // Socket is readable, try to receive data
+        receive_attempt_count++;
+        size_t bytes_received;
+        PlatformSocketAddress sender;
+        
+        PlatformErrorCode recv_err = platform_socket_recvfrom(
+            udp_socket, buffer, sizeof(buffer), &sender, &bytes_received);
+ 
+        if (recv_err == PLATFORM_ERROR_SUCCESS && bytes_received > 0) {
+            successful_receive_count++;
+            logger_log(LOG_INFO, "Received %zu bytes from %s:%d", 
+                      bytes_received, sender.host, sender.port);
+            
+            // Log the first few bytes in hex for debugging
+            if (bytes_received > 0) {
+                char hex_buffer[128] = {0};
+                size_t bytes_to_log = bytes_received > 16 ? 16 : bytes_received;
+                for (size_t i = 0; i < bytes_to_log; i++) {
+                    char hex[4];
+                    snprintf(hex, sizeof(hex), "%02X ", buffer[i]);
+                    strcat(hex_buffer, hex);
+                }
+                logger_log(LOG_DEBUG, "First %zu bytes: %s", bytes_to_log, hex_buffer);
+            }
+            
+            // Process the received message
+            if (bytes_received >= sizeof(SyncMessageHeader)) {
+                SyncMessageHeader* header = (SyncMessageHeader*)buffer;
+                
+                switch (header->msg_type) {
+                    case SYNC_MSG_INIT:
+                        logger_log(LOG_INFO, "Received INIT message (seq: %u)", header->seq_num);
+                        // If we're in WRITE mode, respond with full memory state
+                        if (sync_config.access == PLATFORM_SHM_WRITE || 
+                            sync_config.access == PLATFORM_SHM_READWRITE) {
+                            // Get current memory and send full sync
+                            // This would require opening and reading from shared memory
+                        }
+                        break;
+                        
+                    case SYNC_MSG_UPDATE:
+                        logger_log(LOG_INFO, "Received UPDATE message (seq: %u)", header->seq_num);
+                        // If we're in WRITE mode, apply the update
+                        if (sync_config.access == PLATFORM_SHM_WRITE || 
+                            sync_config.access == PLATFORM_SHM_READWRITE) {
+                            PlatformErrorCode apply_err = apply_memory_update(buffer, bytes_received);
+                            if (apply_err != PLATFORM_ERROR_SUCCESS) {
+                                logger_log(LOG_ERROR, "Failed to apply memory update: %d", apply_err);
+                            }
+                        }
+                        break;
+                        
+                    case SYNC_MSG_ACK:
+                        logger_log(LOG_DEBUG, "Received ACK message (seq: %u)", header->seq_num);
+                        // Handle acknowledgment (could update statistics or retry queue)
+                        break;
+                        
+                    case SYNC_MSG_HEARTBEAT:
+                        logger_log(LOG_DEBUG, "Received HEARTBEAT message (seq: %u)", header->seq_num);
+                        // For now, just log it
+                        break;
+                        
+                    default:
+                        logger_log(LOG_WARN, "Received unknown message type: %u", header->msg_type);
+                        break;
+                }
+            } else {
+                logger_log(LOG_WARN, "Received message too small to be valid");
+            }
+        } else if (recv_err != PLATFORM_ERROR_WOULD_BLOCK) {
+            // Some error other than would block (timeout)
+            logger_log(LOG_WARN, "Error receiving UDP data: %d", recv_err);
+            sleep_ms(100);  // Avoid spinning too fast on errors
+        }
+        
+        // Short sleep to avoid CPU spinning (could be removed if using blocking mode)
+        sleep_ms(10);
     }
     
-    // Clean up
-    logger_log(LOG_INFO, "Shared memory listener thread stopping");
-    udp_socket_close(listen_socket);
     thread_registry_update_state(config->label, THREAD_STATE_TERMINATED);
+    log_socket_state("shared_memory_listener_thread (end)");
+    logger_log(LOG_INFO, "Shared memory listener thread stopping for block %d", data->block_index);
     return NULL;
+}
+
+static PlatformErrorCode apply_memory_update(const uint8_t* message, size_t message_size) {
+    if (!message || message_size < sizeof(SyncMessageHeader) || !writer_shm || !writer_data) {
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    SyncMessageHeader* header = (SyncMessageHeader*)message;
+    
+    // Navigate to variable-length fields
+    size_t name_offset = sizeof(SyncMessageHeader);
+    size_t offset_field_offset = name_offset + header->name_len;
+    size_t len_field_offset = offset_field_offset + sizeof(uint32_t);
+    size_t data_offset = len_field_offset + sizeof(uint32_t);
+    
+    // Ensure message is large enough
+    if (message_size < data_offset) {
+        logger_log(LOG_WARN, "Message too small to contain expected fields");
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Get offset and length from message
+    uint32_t offset = *(uint32_t*)(message + offset_field_offset);
+    uint32_t data_len = *(uint32_t*)(message + len_field_offset);
+    
+    // Ensure offset and length are valid
+    if (offset + data_len > sync_config.data_size) {
+        logger_log(LOG_WARN, "Invalid memory update range: offset=%u, len=%u, max=%zu",
+                  offset, data_len, sync_config.data_size);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Ensure message contains enough data
+    if (message_size < data_offset + data_len) {
+        logger_log(LOG_WARN, "Message truncated, expected %zu bytes, got %zu",
+                  data_offset + data_len, message_size);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Apply the update
+    memcpy((uint8_t*)writer_data + offset, message + data_offset, data_len);
+         
+    logger_log(LOG_DEBUG, "Applied memory update: offset=%u, len=%u", offset, data_len);
+    return PLATFORM_ERROR_SUCCESS;
 }
 
 static PlatformErrorCode send_udp_message(SharedMemorySyncMessageType type, const void* data, size_t size) {

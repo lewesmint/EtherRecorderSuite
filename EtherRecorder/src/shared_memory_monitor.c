@@ -369,31 +369,16 @@ static PlatformErrorCode initialize_monitor_socket(SharedMemoryMonitorConfig* co
         return err;
     }
     
-    // Bind socket to the listen port
-    PlatformSocketAddress bind_addr = {
-        .port = config->forwarding.listen_port,
-        .is_ipv6 = false
-    };
-    strcpy(bind_addr.host, "0.0.0.0"); // Bind to all interfaces
+    // For a sender, we don't need to bind to a specific port
+    // This allows the OS to assign an ephemeral port
+    // Removing the binding code here will prevent port conflicts with listeners
     
-    err = platform_socket_bind(config->socket, &bind_addr);
-    if (err != PLATFORM_ERROR_SUCCESS) {
-        char error_msg[256];
-        platform_get_error_message_from_code(err, error_msg, sizeof(error_msg));
-        logger_log(LOG_ERROR, "Failed to bind UDP socket for '%s' to port %d: %d (%s)", 
-                  config->name, config->forwarding.listen_port, err, error_msg);
-        platform_socket_close(config->socket);
-        config->socket = NULL;
-        return err;
-    }
-    
-    logger_log(LOG_DEBUG, "UDP socket created and bound successfully for '%s': %p on port %d", 
-              config->name, (void*)config->socket, config->forwarding.listen_port);
+    logger_log(LOG_DEBUG, "UDP socket created successfully for '%s': %p (sender only)", 
+              config->name, (void*)config->socket);
     
     // Log the configuration we're using
-    logger_log(LOG_INFO, "UDP socket for '%s' configured to listen on port %d and send to %s:%d", 
-              config->name, config->forwarding.listen_port, 
-              config->forwarding.hostname, config->forwarding.forward_port);
+    logger_log(LOG_INFO, "UDP socket for '%s' configured to send to %s:%d", 
+              config->name, config->forwarding.hostname, config->forwarding.forward_port);
     
     config->socket_initialized = true;
     return PLATFORM_ERROR_SUCCESS;
