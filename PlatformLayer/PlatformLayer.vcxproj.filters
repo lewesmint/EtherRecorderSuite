@@ -50,6 +50,12 @@
     <ClCompile Include="src\platform_error.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="windows\src\udp_socket_wrapper_win.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\src\win_shared_memory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\platform_atomic.h">
@@ -86,6 +92,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="inc\platform_time.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\platform_shared_memory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\udp_socket_wrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -41,6 +41,9 @@
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\message_queue.c" />
     <ClCompile Include="src\server_manager.c" />
+    <ClCompile Include="src\shared_memory_manager.c" />
+    <ClCompile Include="src\shared_memory_monitor.c" />
+    <ClCompile Include="src\shared_memory_sync.c" />
     <ClCompile Include="src\shutdown_handler.c" />
     <ClCompile Include="src\thread_registry.c" />
     <ClCompile Include="src\utils.c" />
@@ -63,6 +66,9 @@
     <ClInclude Include="inc\message_queue_types.h" />
     <ClInclude Include="inc\message_types.h" />
     <ClInclude Include="inc\server_manager.h" />
+    <ClInclude Include="inc\shared_memory_manager.h" />
+    <ClInclude Include="inc\shared_memory_monitor.h" />
+    <ClInclude Include="inc\shared_memory_sync.h" />
     <ClInclude Include="inc\shutdown_handler.h" />
     <ClInclude Include="inc\thread_registry.h" />
     <ClInclude Include="inc\thread_registry_errors.h" />

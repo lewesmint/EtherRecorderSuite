@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\platform_error.c" />
+    <ClCompile Include="windows\src\udp_socket_wrapper_win.c" />
     <ClCompile Include="windows\src\win_atomic.c" />
     <ClCompile Include="windows\src\win_console.c" />
     <ClCompile Include="windows\src\win_error.c" />
@@ -35,6 +36,7 @@
     <ClCompile Include="windows\src\win_mutex.c" />
     <ClCompile Include="windows\src\win_path.c" />
     <ClCompile Include="windows\src\win_random.c" />
+    <ClCompile Include="windows\src\win_shared_memory.c" />
     <ClCompile Include="windows\src\win_sockets.c" />
     <ClCompile Include="windows\src\win_string.c" />
     <ClCompile Include="windows\src\win_sync.c" />
@@ -49,11 +51,13 @@
     <ClInclude Include="inc\platform_mutex.h" />
     <ClInclude Include="inc\platform_path.h" />
     <ClInclude Include="inc\platform_random.h" />
+    <ClInclude Include="inc\platform_shared_memory.h" />
     <ClInclude Include="inc\platform_sockets.h" />
     <ClInclude Include="inc\platform_string.h" />
     <ClInclude Include="inc\platform_sync.h" />
     <ClInclude Include="inc\platform_threads.h" />
     <ClInclude Include="inc\platform_time.h" />
+    <ClInclude Include="inc\udp_socket_wrapper.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

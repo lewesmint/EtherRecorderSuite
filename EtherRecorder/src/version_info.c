@@ -7,7 +7,7 @@
 void print_version_info(void) {
     stream_print(stdout, "\n");
     stream_print(stdout, "----------------------------------------\n");
-    stream_print(stdout, "Claude Ether v%d.%d.%d\n", 
+    stream_print(stdout, "Ether Recorder v%d.%d.%d\n", 
                 APP_VERSION_MAJOR, 
                 APP_VERSION_MINOR, 
                 APP_VERSION_PATCH);
