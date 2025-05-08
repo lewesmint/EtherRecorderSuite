@@ -76,12 +76,19 @@ PlatformErrorCode platform_shared_memory_open(
         }
 
         printf("Creating new shared memory: %s\n", name);
+        DWORD size_high = 0;
+        DWORD size_low = (DWORD)(size & 0xFFFFFFFF);
+        
+        #if defined(_WIN64)
+            size_high = (DWORD)((size >> 32) & 0xFFFFFFFF);
+        #endif
+        
         shm->mapping_handle = CreateFileMappingA(
             INVALID_HANDLE_VALUE,  // Use paging file
             NULL,                  // Default security attributes
             protection,            // Read/write access
-            (DWORD)((size >> 32) & 0xFFFFFFFF),  // High-order DWORD of size
-            (DWORD)(size & 0xFFFFFFFF),          // Low-order DWORD of size
+            size_high,             // High-order DWORD of size
+            size_low,              // Low-order DWORD of size
             name                   // Name of the mapping object
         );
     } else {

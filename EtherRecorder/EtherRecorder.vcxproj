@@ -160,6 +160,7 @@
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
     <SourcePath>src;$(SourcePath)</SourcePath>
+    <LibraryPath>..\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <IncludePath>..\PlatformLayer\inc;inc;$(IncludePath)</IncludePath>
