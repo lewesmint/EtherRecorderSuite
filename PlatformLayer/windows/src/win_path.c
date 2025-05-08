@@ -2,14 +2,16 @@
  * @file win_path.c
  * @brief Windows implementation of platform path operations
  */
-#include "platform_path.h"
-#include "platform_error.h"
-
+#include <platform_path.h>
+#include <platform_error.h>
 #include <windows.h>
-#include <stdlib.h>
-#include <string.h>
-#include <shlwapi.h>
-#include <direct.h>
+#include <io.h>      // For _open_osfhandle
+#include <fcntl.h>   // For _O_BINARY, _O_TEXT
+#include <stdio.h>   // For FILE, _fdopen
+#include <stdlib.h>  // For free
+#include <string.h>  // For strchr
+#include <direct.h>  // For _mkdir
+#include <stdbool.h> // For bool type
 
 // Link against shlwapi.lib for path functions
 #pragma comment(lib, "shlwapi.lib")
@@ -258,10 +260,110 @@ PlatformErrorCode platform_fopen(FILE** file, const char* filename, const char* 
         return PLATFORM_ERROR_INVALID_ARGUMENT;
     }
     
-    errno_t err = fopen_s(file, filename, mode);
-    if (err != 0) {
-        *file = NULL;
-        return PLATFORM_ERROR_FILE_ACCESS;
+    // Initialize file pointer to NULL
+    *file = NULL;
+    
+    // Parse mode string to determine access and creation flags
+    DWORD access = 0;
+    DWORD creation = 0;
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE; // Allow other processes to read/write by default
+    bool append = false;
+    
+    // Check mode string
+    if (strchr(mode, 'r') != NULL) {
+        access = GENERIC_READ;
+        creation = OPEN_EXISTING;
+        
+        // Check for "r+" which is read/write
+        if (strchr(mode, '+') != NULL) {
+            access |= GENERIC_WRITE;
+        }
+    } 
+    else if (strchr(mode, 'w') != NULL) {
+        access = GENERIC_WRITE;
+        creation = CREATE_ALWAYS; // Create or truncate
+        
+        // Check for "w+" which is read/write
+        if (strchr(mode, '+') != NULL) {
+            access |= GENERIC_READ;
+        }
+    }
+    else if (strchr(mode, 'a') != NULL) {
+        access = GENERIC_WRITE;
+        creation = OPEN_ALWAYS; // Create if not exists
+        append = true;
+        
+        // Check for "a+" which is read/write
+        if (strchr(mode, '+') != NULL) {
+            access |= GENERIC_READ;
+        }
+    }
+    else {
+        // Invalid mode
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Check for binary mode - doesn't affect CreateFile but needed for _fdopen
+    bool binary = (strchr(mode, 'b') != NULL);
+    
+    // Open the file with CreateFile
+    HANDLE hFile = CreateFileA(
+        filename,
+        access,
+        share,
+        NULL,
+        creation,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError(); // Use GetLastError() for Windows API functions
+        switch (error) {
+            case ERROR_FILE_NOT_FOUND:
+                return PLATFORM_ERROR_FILE_NOT_FOUND;
+            case ERROR_ACCESS_DENIED:
+                return PLATFORM_ERROR_PERMISSION_DENIED;
+            case ERROR_SHARING_VIOLATION:
+                return PLATFORM_ERROR_FILE_LOCKED;
+            default:
+                return PLATFORM_ERROR_FILE_OPEN;
+        }
+    }
+    
+    // If append mode, seek to end of file
+    if (append) {
+        SetFilePointer(hFile, 0, NULL, FILE_END);
+    }
+    
+    // Convert HANDLE to FILE* using _open_osfhandle and _fdopen
+    int fd = _open_osfhandle((intptr_t)hFile, binary ? _O_BINARY : _O_TEXT);
+    if (fd == -1) {
+        CloseHandle(hFile);
+        return PLATFORM_ERROR_FILE_OPEN;
+    }
+    
+    // Create a FILE* from the file descriptor
+    // Construct the mode string for _fdopen
+    char fdopen_mode[4] = {0};
+    int idx = 0;
+    
+    // First character from original mode (r, w, a)
+    if (strchr(mode, 'r')) fdopen_mode[idx++] = 'r';
+    else if (strchr(mode, 'w')) fdopen_mode[idx++] = 'w';
+    else if (strchr(mode, 'a')) fdopen_mode[idx++] = 'a';
+    
+    // Add + if present
+    if (strchr(mode, '+')) fdopen_mode[idx++] = '+';
+    
+    // Add b if binary
+    if (binary) fdopen_mode[idx++] = 'b';
+    
+    // Convert to FILE*
+    *file = _fdopen(fd, fdopen_mode);
+    if (*file == NULL) {
+        _close(fd); // This also closes the underlying HANDLE
+        return PLATFORM_ERROR_FILE_OPEN;
     }
     
     return PLATFORM_ERROR_SUCCESS;

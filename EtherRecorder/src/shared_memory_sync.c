@@ -41,7 +41,7 @@ typedef struct {
  */
 
 // Process received message and apply to shared memory
-static PlatformErrorCode process_received_message(uint8_t* buffer, size_t bytes_received, SharedMemoryListenerData* data) {
+static PlatformErrorCode process_received_message_old(uint8_t* buffer, size_t bytes_received, SharedMemoryListenerData* data) {
     if (!buffer || bytes_received < sizeof(SyncMessageHeader) || !data) {
         logger_log(LOG_ERROR, "Invalid parameters for process_received_message");
         return PLATFORM_ERROR_INVALID_ARGUMENT;
@@ -147,6 +147,123 @@ static PlatformErrorCode process_received_message(uint8_t* buffer, size_t bytes_
                   offset, data_len, data->name);
     } else {
         logger_log(LOG_ERROR, "Cannot apply update - no mapped memory");
+        return PLATFORM_ERROR_NOT_INITIALIZED;
+    }
+    
+    return PLATFORM_ERROR_SUCCESS;
+}
+
+// Create a new simplified version that updates specific bytes
+static PlatformErrorCode process_received_message(uint8_t* buffer, size_t bytes_received, SharedMemoryListenerData* data) {
+    if (!buffer || bytes_received < sizeof(SyncMessageHeader) || !data) {
+        logger_log(LOG_ERROR, "Invalid parameters for process_received_message");
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Parse the fixed-size header
+    SyncMessageHeader* header = (SyncMessageHeader*)buffer;
+    
+    // Get message type as string
+    const char* msg_type_str = "UNKNOWN";
+    switch (header->msg_type) {
+        case SYNC_MSG_INIT: msg_type_str = "INIT"; break;
+        case SYNC_MSG_UPDATE: msg_type_str = "UPDATE"; break;
+        case SYNC_MSG_ACK: msg_type_str = "ACK"; break;
+        case SYNC_MSG_HEARTBEAT: msg_type_str = "HEARTBEAT"; break;
+    }
+    
+    // Extract block name
+    size_t name_offset = sizeof(SyncMessageHeader);
+    size_t name_len = header->name_len;
+    
+    if (name_len > 64) {
+        logger_log(LOG_WARN, "Name length too large: %u (max 64)", name_len);
+        name_len = 64;
+    }
+    
+    if (bytes_received < name_offset + name_len) {
+        logger_log(LOG_WARN, "Message too small for name: need %zu, got %zu", 
+                  name_offset + name_len, bytes_received);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    char block_name[65] = {0};
+    memcpy(block_name, buffer + name_offset, name_len);
+    block_name[name_len] = '\0';
+    
+    // Log message details in a single line
+    logger_log(LOG_INFO, "Message details: Type=%s (%d), Seq=%u, Block='%s'", 
+              msg_type_str, header->msg_type, header->seq_num, block_name);
+    
+    // Check if this message is for our block
+    if (strcmp(block_name, data->name) != 0) {
+        logger_log(LOG_DEBUG, "Ignoring message for different block (ours is '%s')", data->name);
+        return PLATFORM_ERROR_SUCCESS;
+    }
+    
+    // Calculate position of offset and length fields
+    // Note: We use fixed 64 bytes for name field in the message format
+    size_t fixed_name_size = 64;
+    size_t offset_field_pos = name_offset + fixed_name_size;
+    size_t length_field_pos = offset_field_pos + sizeof(uint32_t);
+    size_t data_start_pos = length_field_pos + sizeof(uint32_t);
+    
+    if (bytes_received < length_field_pos + sizeof(uint32_t)) {
+        logger_log(LOG_WARN, "Message too small for offset/length fields: need %zu, got %zu", 
+                  length_field_pos + sizeof(uint32_t), bytes_received);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Extract offset and length
+    uint32_t offset = 0;
+    uint32_t data_len = 0;
+    
+    memcpy(&offset, buffer + offset_field_pos, sizeof(uint32_t));
+    memcpy(&data_len, buffer + length_field_pos, sizeof(uint32_t));
+    
+    logger_log(LOG_INFO, "Memory update: Offset=%u, Length=%u", offset, data_len);
+    
+    // Validate offset and length
+    if (offset + data_len > data->data_size) {
+        logger_log(LOG_WARN, "Invalid update range: offset %u + length %u exceeds memory size %zu", 
+                  offset, data_len, data->data_size);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Check if message contains all the data
+    if (bytes_received < data_start_pos + data_len) {
+        logger_log(LOG_WARN, "Message truncated: need %zu bytes, got %zu", 
+                  data_start_pos + data_len, bytes_received);
+        return PLATFORM_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Apply the update to shared memory
+    if (data->mapped_data && data_len > 0) {
+        uint8_t* mem_ptr = (uint8_t*)data->mapped_data;
+        uint8_t* data_ptr = buffer + data_start_pos;
+        
+        // Log a sample of the data (first few bytes)
+        if (data_len > 0) {
+            size_t sample_size = data_len > 16 ? 16 : data_len;
+            char data_sample[128] = {0};
+            for (size_t i = 0; i < sample_size; i++) {
+                char hex[4];
+                snprintf(hex, sizeof(hex), "%02X ", data_ptr[i]);
+                strcat(data_sample, hex);
+            }
+            logger_log(LOG_INFO, "Data sample: %s%s", 
+                      data_sample, sample_size < data_len ? "..." : "");
+        }
+        
+        // Apply the update
+        memcpy(mem_ptr + offset, data_ptr, data_len);
+        
+        logger_log(LOG_INFO, "Successfully updated %u bytes at offset %u in shared memory '%s'", 
+                  data_len, offset, data->name);
+    } else if (data_len == 0) {
+        logger_log(LOG_DEBUG, "No data to update (zero length)");
+    } else {
+        logger_log(LOG_ERROR, "Cannot update - shared memory not mapped");
         return PLATFORM_ERROR_NOT_INITIALIZED;
     }
     

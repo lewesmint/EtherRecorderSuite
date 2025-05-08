@@ -3,36 +3,35 @@
  * @brief Implementation of platform-agnostic error handling utilities
  */
 
- #include "platform_error.h"
- #include <stdio.h>
- #include <string.h>
- 
- 
-//  /**
-//   * @brief Utility function to sanitize error messages
-//   * 
-//   * Removes trailing whitespace, newlines, carriage returns, and periods.
-//   * 
-//   * @param message The message to sanitize
-//   * @return char* Pointer to the sanitized message
-//   */
-//  static char* sanitize_error_message(char* message) {
-//      if (!message) {
-//          return message;
-//      }
-     
-//      size_t len = strlen(message);
-     
-//      // Trim trailing spaces, newlines, carriage returns, and periods
-//      while (len > 0 && (message[len-1] == ' ' || 
-//                         message[len-1] == '\n' || 
-//                         message[len-1] == '\r' || 
-//                         message[len-1] == '.')) {
-//          message[--len] = '\0';
-//      }
-     
-//      return message;
-//  }
+#include "platform_error.h"
+#include <stdio.h>
+#include <string.h>
+
+/**
+ * @brief Utility function to sanitize error messages
+ * 
+ * Removes trailing whitespace, newlines, carriage returns, and periods.
+ * 
+ * @param message The message to sanitize
+ * @return char* Pointer to the sanitized message
+ */
+static char* sanitize_error_message(char* message) {
+    if (!message) {
+        return message;
+    }
+    
+    size_t len = strlen(message);
+    
+    // Trim trailing spaces, newlines, carriage returns, and periods
+    while (len > 0 && (message[len-1] == ' ' || 
+                        message[len-1] == '\n' || 
+                        message[len-1] == '\r' || 
+                        message[len-1] == '.')) {
+        message[--len] = '\0';
+    }
+    
+    return message;
+}
   
 char* platform_get_error_message_from_code(PlatformErrorCode error_code, char* buffer, size_t buffer_size) {
     if (!buffer || buffer_size == 0) {
@@ -57,6 +56,7 @@ char* platform_get_error_message_from_code(PlatformErrorCode error_code, char* b
         case PLATFORM_ERROR_BUSY:                  snprintf(buffer, buffer_size, "Resource busy"); break;
         case PLATFORM_ERROR_WOULD_BLOCK:           snprintf(buffer, buffer_size, "Operation would block"); break;
         case PLATFORM_ERROR_SYSTEM:                snprintf(buffer, buffer_size, "System error"); break;
+        case PLATFORM_ERROR_INTERRUPTED:           snprintf(buffer, buffer_size, "Operation interrupted"); break;
 
         // Socket-specific errors
         case PLATFORM_ERROR_SOCKET_CREATE:         snprintf(buffer, buffer_size, "Failed to create socket"); break;
@@ -98,145 +98,3 @@ char* platform_get_error_message_from_code(PlatformErrorCode error_code, char* b
     
     return buffer;
 }
- 
-// char* old_platform_get_error_message(PlatformErrorDomain domain, char* buffer, size_t buffer_size) {
-//      if (!buffer || buffer_size == 0) {
-//          return NULL;
-//      }
-     
-//      // Get the platform-agnostic error code first
-//      PlatformErrorCode error_code = platform_get_error_code(domain);
-     
-//      // Get the system-specific error message
-//  #ifdef _WIN32
-//      DWORD win_error_code = GetLastError();
-//      LPSTR sys_msg_buf = NULL;
-//      DWORD result = FormatMessageA(
-//          FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-//          NULL,
-//          win_error_code,
-//          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-//          (LPSTR)&sys_msg_buf,
-//          0,
-//          NULL);
-     
-//      if (result == 0 || sys_msg_buf == NULL) {
-//          // FormatMessage failed, use our platform-agnostic message
-//          platform_get_error_message_from_code(error_code, buffer, buffer_size);
-//      } else {
-//          // Format the message with the error code and system message
-//          char temp_buffer[256];
-//          platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//          snprintf(buffer, buffer_size, "%s (system error %lu: %s)", 
-//              temp_buffer,
-//              win_error_code,
-//              sanitize_error_message(sys_msg_buf));
-//          LocalFree(sys_msg_buf);
-//      }
-//  #else
-//      int posix_error_code = errno;
-     
-//      // Use the thread-safe version of strerror
-//      #if defined(_GNU_SOURCE)
-//          // GNU version returns a char* and ignores the buffer
-//          char sys_msg_buf[256];
-//          char* sys_msg = strerror_r(posix_error_code, sys_msg_buf, sizeof(sys_msg_buf));
-         
-//          // Format the message with the error code and system message
-//          char temp_buffer[256];
-//          platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//          snprintf(buffer, buffer_size, "%s (system error %d: %s)", 
-//              temp_buffer,
-//              posix_error_code,
-//              sanitize_error_message(sys_msg));
-//      #else
-//          // POSIX version returns an int and uses the buffer
-//          char sys_msg_buf[256];
-//          if (strerror_r(posix_error_code, sys_msg_buf, sizeof(sys_msg_buf)) != 0) {
-//              // strerror_r failed, use our platform-agnostic message only
-//              platform_get_error_message_from_code(error_code, buffer, buffer_size);
-//          } else {
-//              // Format the message with the error code and system message
-//              char temp_buffer[256];
-//              platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//              snprintf(buffer, buffer_size, "%s (system error %d: %s)", 
-//                  temp_buffer,
-//                  posix_error_code,
-//                  sanitize_error_message(sys_msg_buf));
-//          }
-//      #endif
-//  #endif
-     
-//      return buffer;
-//  }
- 
-//  char* platform_get_socket_error_message(char* buffer, size_t buffer_size) {
-//      if (!buffer || buffer_size == 0) {
-//          return NULL;
-//      }
-     
-//      // Get the platform-agnostic error code first
-//      PlatformErrorCode error_code = platform_get_socket_error_code();
-     
-//      // Get the system-specific error message
-//  #ifdef _WIN32
-//      DWORD win_error_code = WSAGetLastError();
-//      LPSTR sys_msg_buf = NULL;
-//      DWORD result = FormatMessageA(
-//          FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-//          NULL,
-//          win_error_code,
-//          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-//          (LPSTR)&sys_msg_buf,
-//          0,
-//          NULL);
-     
-//      if (result == 0 || sys_msg_buf == NULL) {
-//          // FormatMessage failed, use our platform-agnostic message
-//          platform_get_error_message_from_code(error_code, buffer, buffer_size);
-//      } else {
-//          // Format the message with the error code and system message
-//          char temp_buffer[256];
-//          platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//          snprintf(buffer, buffer_size, "%s (socket error %lu: %s)", 
-//              temp_buffer,
-//              win_error_code,
-//              sanitize_error_message(sys_msg_buf));
-//          LocalFree(sys_msg_buf);
-//      }
-//  #else
-//      int posix_error_code = errno;
-     
-//      // Use the thread-safe version of strerror
-//      #if defined(_GNU_SOURCE)
-//          // GNU version returns a char* and ignores the buffer
-//          char sys_msg_buf[256];
-//          char* sys_msg = strerror_r(posix_error_code, sys_msg_buf, sizeof(sys_msg_buf));
-         
-//          // Format the message with the error code and system message
-//          char temp_buffer[256];
-//          platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//          snprintf(buffer, buffer_size, "%s (socket error %d: %s)", 
-//              temp_buffer,
-//              posix_error_code,
-//              sanitize_error_message(sys_msg));
-//      #else
-//          // POSIX version returns an int and uses the buffer
-//          char sys_msg_buf[256];
-//          if (strerror_r(posix_error_code, sys_msg_buf, sizeof(sys_msg_buf)) != 0) {
-//              // strerror_r failed, use our platform-agnostic message only
-//              platform_get_error_message_from_code(error_code, buffer, buffer_size);
-//          } else {
-//              // Format the message with the error code and system message
-//              char temp_buffer[256];
-//              platform_get_error_message_from_code(error_code, temp_buffer, sizeof(temp_buffer));
-//              snprintf(buffer, buffer_size, "%s (socket error %d: %s)", 
-//                  temp_buffer,
-//                  posix_error_code,
-//                  sanitize_error_message(sys_msg_buf));
-//          }
-//      #endif
-//  #endif
-     
-//      return buffer;
-//  }

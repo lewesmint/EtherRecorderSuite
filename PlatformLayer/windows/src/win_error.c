@@ -21,12 +21,40 @@ static __declspec(thread) struct {
     .message = {0}
 };
 
-extern void sanitize_error_message(char* message);
+/**
+ * @brief Sanitize error message by removing trailing whitespace and newlines
+ * @param message The message to sanitize
+ */
+void sanitize_error_message(char* message) {
+    if (!message) {
+        return;
+    }
+    
+    // Find the end of the string
+    size_t len = strlen(message);
+    if (len == 0) {
+        return;
+    }
+    
+    // Trim trailing whitespace and newlines
+    char* end = message + len - 1;
+    while (end >= message && (*end == ' ' || *end == '\n' || *end == '\r' || *end == '\t')) {
+        *end = '\0';
+        end--;
+    }
+}
 
-static int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain) {
+/**
+ * @brief Map Windows error codes to platform error codes
+ * @param error_code Windows error code
+ * @param domain Error domain
+ * @return Mapped platform error code
+ */
+int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain) {
     switch (domain) {
         case PLATFORM_ERROR_DOMAIN_NETWORK:
             switch (error_code) {
+                // Standard Windows errors
                 case ERROR_ACCESS_DENIED:       return PLATFORM_ERROR_PERMISSION_DENIED;
                 case ERROR_PATH_NOT_FOUND:      return PLATFORM_ERROR_NOT_FOUND;
                 case ERROR_ALREADY_EXISTS:      return PLATFORM_ERROR_ALREADY_EXISTS;
@@ -34,16 +62,51 @@ static int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain) {
                 case ERROR_BUSY:                return PLATFORM_ERROR_BUSY;
                 case ERROR_IO_PENDING:          return PLATFORM_ERROR_WOULD_BLOCK;
                 case ERROR_BAD_ARGUMENTS:       return PLATFORM_ERROR_INVALID_ARGUMENT;
-                // Add new socket-specific error mappings
+                
+                // Winsock errors
+                case WSAEACCES:                return PLATFORM_ERROR_PERMISSION_DENIED;
+                case WSAEADDRINUSE:            return PLATFORM_ERROR_ADDRESS_IN_USE;
+                case WSAEADDRNOTAVAIL:         return PLATFORM_ERROR_ADDRESS_NOT_AVAILABLE;
+                case WSAEAFNOSUPPORT:          return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAEALREADY:              return PLATFORM_ERROR_ALREADY_EXISTS;
+                case WSAEBADF:                 return PLATFORM_ERROR_INVALID_ARGUMENT;
+                case WSAECONNABORTED:          return PLATFORM_ERROR_CONNECTION_RESET;
                 case WSAECONNREFUSED:          return PLATFORM_ERROR_CONNECTION_REFUSED;
-                case WSAENETUNREACH:           return PLATFORM_ERROR_NETWORK_UNREACHABLE;
-                case WSAENETDOWN:              return PLATFORM_ERROR_NETWORK_DOWN;
-                case WSAETIMEDOUT:             return PLATFORM_ERROR_TIMEOUT;
-                case WSAEHOSTUNREACH:          return PLATFORM_ERROR_HOST_NOT_FOUND;
-                case WSAEWOULDBLOCK:           return PLATFORM_ERROR_WOULD_BLOCK;
-                case WSAEINPROGRESS:           return PLATFORM_ERROR_WOULD_BLOCK;
-                case WSAESHUTDOWN:             return PLATFORM_ERROR_PEER_SHUTDOWN;
                 case WSAECONNRESET:            return PLATFORM_ERROR_SOCKET_CLOSED;
+                case WSAEDESTADDRREQ:          return PLATFORM_ERROR_INVALID_ARGUMENT;
+                case WSAEFAULT:                return PLATFORM_ERROR_INVALID_ARGUMENT;
+                case WSAEHOSTDOWN:             return PLATFORM_ERROR_HOST_NOT_FOUND;
+                case WSAEHOSTUNREACH:          return PLATFORM_ERROR_HOST_NOT_FOUND;
+                case WSAEINPROGRESS:           return PLATFORM_ERROR_WOULD_BLOCK;
+                case WSAEINTR:                 return PLATFORM_ERROR_INTERRUPTED;
+                case WSAEINVAL:                return PLATFORM_ERROR_INVALID_ARGUMENT;
+                case WSAEISCONN:               return PLATFORM_ERROR_ALREADY_EXISTS;
+                case WSAEMFILE:                return PLATFORM_ERROR_OUT_OF_MEMORY;
+                case WSAEMSGSIZE:              return PLATFORM_ERROR_BUFFER_TOO_SMALL;
+                case WSAENETDOWN:              return PLATFORM_ERROR_NETWORK_DOWN;
+                case WSAENETRESET:             return PLATFORM_ERROR_CONNECTION_RESET;
+                case WSAENETUNREACH:           return PLATFORM_ERROR_NETWORK_UNREACHABLE;
+                case WSAENOBUFS:               return PLATFORM_ERROR_OUT_OF_MEMORY;
+                case WSAENOPROTOOPT:           return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAENOTCONN:              return PLATFORM_ERROR_NOT_FOUND;
+                case WSAENOTSOCK:              return PLATFORM_ERROR_INVALID_ARGUMENT;
+                case WSAEOPNOTSUPP:            return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAEPFNOSUPPORT:          return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAEPROCLIM:              return PLATFORM_ERROR_OUT_OF_MEMORY;
+                case WSAEPROTONOSUPPORT:       return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAEPROTOTYPE:            return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAESHUTDOWN:             return PLATFORM_ERROR_PEER_SHUTDOWN;
+                case WSAESOCKTNOSUPPORT:       return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSAETIMEDOUT:             return PLATFORM_ERROR_TIMEOUT;
+                case WSAEWOULDBLOCK:           return PLATFORM_ERROR_WOULD_BLOCK;
+                case WSAHOST_NOT_FOUND:        return PLATFORM_ERROR_HOST_NOT_FOUND;
+                case WSANO_DATA:               return PLATFORM_ERROR_HOST_NOT_FOUND;
+                case WSANO_RECOVERY:           return PLATFORM_ERROR_SOCKET_RESOLVE;
+                case WSASYSNOTREADY:           return PLATFORM_ERROR_NOT_INITIALIZED;
+                case WSATRY_AGAIN:             return PLATFORM_ERROR_SOCKET_RESOLVE;
+                case WSAVERNOTSUPPORTED:       return PLATFORM_ERROR_NOT_SUPPORTED;
+                case WSANOTINITIALISED:        return PLATFORM_ERROR_NOT_INITIALIZED;
+                
                 default:                       return PLATFORM_ERROR_UNKNOWN;
             }
             break;

@@ -2,9 +2,6 @@
  * @file win_sockets.c
  * @brief Windows implementation of platform socket operations using Winsock2
  */
-#include "platform_sockets.h"
-#include "platform_error.h"
-#include "platform_time.h"  // Added for timeout constants
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -12,6 +9,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "platform_sockets.h"
+#include "platform_error.h"
+#include "platform_time.h"  // Added for timeout constants
+
+// External function declarations from win_error.c
+extern int32_t map_windows_error(DWORD error_code, PlatformErrorDomain domain);
+extern PlatformErrorCode platform_set_error(PlatformErrorDomain domain, int32_t code, DWORD system_error);
 
 PlatformErrorCode platform_socket_init(void) {
     WSADATA wsa_data;
@@ -27,79 +31,18 @@ void platform_socket_cleanup(void) {
 }
 
 static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOptions* options) {
-    fprintf(stderr, "\n>>> set_socket_options called - socket: %d, options ptr: %p\n", 
-            (int)sock, (void*)options);
-    
+    // Remove excessive logging
     if (!options) {
-        fprintf(stderr, ">>> No options provided, returning success\n");
         return PLATFORM_ERROR_SUCCESS;
     }
-
-    // Determine socket type at the beginning
-    int socket_type;
-    int optlen = sizeof(socket_type);
-    bool is_tcp = false;
-    
-    if (getsockopt(sock, SOL_SOCKET, SO_TYPE, (char*)&socket_type, &optlen) != SOCKET_ERROR) {
-        is_tcp = (socket_type == SOCK_STREAM);
-        fprintf(stderr, ">>> Socket type: %s\n", is_tcp ? "TCP" : "UDP");
-    } else {
-        int error = WSAGetLastError();
-        fprintf(stderr, ">>> Failed to determine socket type (error %d)\n", error);
-        // Continue with default assumption (not TCP)
-    }
-
-    // Log the option values being set
-    fprintf(stderr, ">>> Setting options - blocking: %d, reuse_addr: %d, keep_alive: %d\n", 
-            options->blocking, options->reuse_address, options->keep_alive);
-    fprintf(stderr, ">>> Timeouts - send: %u ms, recv: %u ms\n", 
-            options->send_timeout_ms, options->recv_timeout_ms);
-    fprintf(stderr, ">>> Buffer sizes - send: %u, recv: %u\n",
-            (unsigned int)options->send_buffer_size, (unsigned int)options->recv_buffer_size);
 
     // Set blocking mode (common to both TCP and UDP)
     u_long mode = options->blocking ? 0 : 1;
     if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
-        int error = WSAGetLastError();
-        fprintf(stderr, "Socket option error: Failed to set blocking mode (error %d)\n", error);
-        return PLATFORM_ERROR_SOCKET_OPTION;
-    }
-    fprintf(stderr, ">>> Successfully set blocking mode to %d\n", options->blocking);
-
-    // Set reuse address (common to both TCP and UDP)
-    BOOL reuse = options->reuse_address ? TRUE : FALSE;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse)) == SOCKET_ERROR) {
-        int error = WSAGetLastError();
-        fprintf(stderr, "Socket option error: Failed to set SO_REUSEADDR (error %d)\n", error);
-        return PLATFORM_ERROR_SOCKET_OPTION;
-    }
-    fprintf(stderr, ">>> Successfully set SO_REUSEADDR to %d\n", reuse);
-
-    // TCP-specific options
-    if (is_tcp) {
-        // Set keep alive (TCP only)
-        if (options->keep_alive) {
-            BOOL keepalive = TRUE;
-            if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char*)&keepalive, sizeof(keepalive)) == SOCKET_ERROR) {
-                int error = WSAGetLastError();
-                fprintf(stderr, "Socket option error: Failed to set SO_KEEPALIVE (error %d)\n", error);
-                return PLATFORM_ERROR_SOCKET_OPTION;
-            }
-            fprintf(stderr, ">>> Successfully set SO_KEEPALIVE to %d\n", keepalive);
-        }
-        
-        // Set TCP_NODELAY (TCP only)
-        if (options->no_delay) {
-            BOOL nodelay = TRUE;
-            if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char*)&nodelay, sizeof(nodelay)) == SOCKET_ERROR) {
-                int error = WSAGetLastError();
-                fprintf(stderr, "Socket option error: Failed to set TCP_NODELAY (error %d)\n", error);
-                return PLATFORM_ERROR_SOCKET_OPTION;
-            }
-            fprintf(stderr, ">>> Successfully set TCP_NODELAY to %d\n", nodelay);
-        }
-    } else {
-        fprintf(stderr, ">>> Skipping TCP-specific options for UDP socket\n");
+        DWORD error = WSAGetLastError();
+        PlatformErrorCode mapped_error = map_windows_error(error, PLATFORM_ERROR_DOMAIN_NETWORK);
+        platform_set_error(PLATFORM_ERROR_DOMAIN_NETWORK, mapped_error, error);
+        return mapped_error;
     }
 
     // Common options continue here...
@@ -113,24 +56,10 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
             timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
         }
         if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
-            int error = WSAGetLastError();
-            fprintf(stderr, "Socket option error: Failed to set SO_SNDTIMEO (error %d)\n", error);
-            return PLATFORM_ERROR_SOCKET_OPTION;
-        }
-    }
-    
-    // Set receive timeout
-    if (options->recv_timeout_ms > 0) {
-        DWORD timeout = options->recv_timeout_ms;
-        if (timeout > PLATFORM_MAX_WAIT_TIMEOUT_MS) {
-            timeout = PLATFORM_MAX_WAIT_TIMEOUT_MS;
-        } else if (timeout < PLATFORM_MIN_WAIT_TIMEOUT_MS) {
-            timeout = PLATFORM_MIN_WAIT_TIMEOUT_MS;
-        }
-        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout)) == SOCKET_ERROR) {
-            int error = WSAGetLastError();
-            fprintf(stderr, "Socket option error: Failed to set SO_RCVTIMEO (error %d)\n", error);
-            return PLATFORM_ERROR_SOCKET_OPTION;
+            DWORD error = WSAGetLastError();
+            PlatformErrorCode mapped_error = map_windows_error(error, PLATFORM_ERROR_DOMAIN_NETWORK);
+            platform_set_error(PLATFORM_ERROR_DOMAIN_NETWORK, mapped_error, error);
+            return mapped_error;
         }
     }
     
@@ -138,18 +67,20 @@ static PlatformErrorCode set_socket_options(SOCKET sock, const PlatformSocketOpt
     if (options->send_buffer_size > 0) {
         int size = (int)options->send_buffer_size;
         if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char*)&size, sizeof(size)) == SOCKET_ERROR) {
-            int error = WSAGetLastError();
-            fprintf(stderr, "Socket option error: Failed to set SO_SNDBUF (error %d)\n", error);
-            return PLATFORM_ERROR_SOCKET_OPTION;
+            DWORD error = WSAGetLastError();
+            PlatformErrorCode mapped_error = map_windows_error(error, PLATFORM_ERROR_DOMAIN_NETWORK);
+            platform_set_error(PLATFORM_ERROR_DOMAIN_NETWORK, mapped_error, error);
+            return mapped_error;
         }
     }
     
     if (options->recv_buffer_size > 0) {
         int size = (int)options->recv_buffer_size;
         if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&size, sizeof(size)) == SOCKET_ERROR) {
-            int error = WSAGetLastError();
-            fprintf(stderr, "Socket option error: Failed to set SO_RCVBUF (error %d)\n", error);
-            return PLATFORM_ERROR_SOCKET_OPTION;
+            DWORD error = WSAGetLastError();
+            PlatformErrorCode mapped_error = map_windows_error(error, PLATFORM_ERROR_DOMAIN_NETWORK);
+            platform_set_error(PLATFORM_ERROR_DOMAIN_NETWORK, mapped_error, error);
+            return mapped_error;
         }
     }
 

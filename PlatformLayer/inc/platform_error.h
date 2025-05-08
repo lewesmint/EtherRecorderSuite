@@ -46,6 +46,7 @@ typedef enum PlatformErrorCode {
     PLATFORM_ERROR_BUSY = 12,
     PLATFORM_ERROR_WOULD_BLOCK = 13,
     PLATFORM_ERROR_SYSTEM = 14,        // Generic system error
+    PLATFORM_ERROR_INTERRUPTED = 15,   // Operation was interrupted
 
     // Socket errors (100-199)
     PLATFORM_ERROR_SOCKET_CREATE = 100,

@@ -15,7 +15,7 @@
 #include "logger.h"
 #include "app_config.h"
 #include "shutdown_handler.h"
-#include "utils.h"  // Add this include for get_time_ms
+#include "utils.h"
 
 typedef struct {
     uint32_t offset;
@@ -207,7 +207,7 @@ static PlatformErrorCode open_and_map_shared_memory(
 ) {
     logger_log(LOG_INFO, "Attempting to open shared memory '%s' (create=%s, access=%d, size=%zu)", 
               config->name, config->create ? "true" : "false", config->access, config->data_size);
-    
+
     PlatformErrorCode result = platform_shared_memory_open(
         handle,
         config->name,
@@ -268,6 +268,10 @@ static PlatformErrorCode open_and_map_shared_memory(
     
     logger_log(LOG_INFO, "Successfully opened and mapped shared memory '%s' (%zu bytes)", 
              config->name, config->data_size);
+    
+    // Print the memory address
+    logger_log(LOG_INFO, "Shared memory '%s' mapped at address: %p (size: %zu bytes)", 
+             config->name, *mapped_data, config->data_size);
     
     // Start the shared memory listener thread if not already started
     // MOVED: Only start listener thread after successful mapping
@@ -607,7 +611,7 @@ static void process_memory_changes(
         // On first read, send entire memory block with INIT message type
         PlatformErrorCode result = send_full_memory(config, mapped_data);
         if (result == PLATFORM_ERROR_SUCCESS) {
-            logger_log(LOG_DEBUG, "Sent initial full memory state (%zu bytes)", config->data_size);
+            logger_log(LOG_INFO, "Sent initial full memory state (%zu bytes)", config->data_size);
         } else {
             logger_log(LOG_ERROR, "Failed to send initial full memory state: %d", result);
         }
@@ -643,9 +647,6 @@ static void process_memory_changes(
                     offset
                 );
                 
-                logger_log(LOG_DEBUG, "Forwarded changed region: offset=%u, length=%u", 
-                         offset, length);
-                
                 current = current->next;
             }
             
@@ -661,34 +662,6 @@ static void process_memory_changes(
             }
         }
     }
-}
-
-// Add this function to write test data to shared memory
-static void write_test_data_to_shared_memory(
-    SharedMemoryMonitorConfig* config,
-    void* mapped_data
-) {
-    if (!mapped_data || config->access == PLATFORM_SHM_READ) {
-        // Skip if we don't have write access
-        return;
-    }
-    
-    // Create a simple test pattern
-    uint32_t* data32 = (uint32_t*)mapped_data;
-    
-    // Write current timestamp (seconds since epoch)
-    data32[0] = (uint32_t)time(NULL);
-    
-    // Write a counter that increments each time
-    static uint32_t counter = 0;
-    data32[1] = ++counter;
-    
-    // Write a recognizable pattern
-    data32[2] = 0xDEADBEEF;
-    data32[3] = 0xCAFEBABE;
-    
-    logger_log(LOG_INFO, "Test data written to shared memory '%s': timestamp=%u, counter=%u", 
-              config->name, data32[0], data32[1]);
 }
 
 // Main thread function for monitoring shared memory
@@ -788,9 +761,6 @@ void* shared_memory_monitor_thread(void* arg) {
         PlatformMutex_T shm_mutex;
         platform_mutex_init(&shm_mutex);
         
-        // Add a timestamp for periodic test data writing
-        uint64_t last_test_write_time = get_time_ms();
-
         while (!shutdown_signalled()) {
             // Lock shared memory for reading/writing
             PlatformErrorCode lock_result = platform_mutex_lock(&shm_mutex);
@@ -798,16 +768,6 @@ void* shared_memory_monitor_thread(void* arg) {
                 logger_log(LOG_WARN, "Failed to lock shared memory for reading: %d", lock_result);
                 sleep_ms(config->interval_ms);
                 continue;
-            }
-            
-            // Check if we should write test data (every 5 seconds)
-            uint64_t current_time = get_time_ms();
-            if (current_time - last_test_write_time > 5000) {
-                // Write test data if we have write access
-                if (config->access == PLATFORM_SHM_WRITE || config->access == PLATFORM_SHM_READWRITE) {
-                    write_test_data_to_shared_memory(config, mapped_data);
-                    last_test_write_time = current_time;
-                }
             }
             
             if (should_detect_changes) {
